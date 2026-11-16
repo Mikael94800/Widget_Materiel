@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestion du Matériel de la Direction</title>
+    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <style>
+        :root {
+            --primary: #1f4e78;
+            --primary-hover: #163856;
+            --success: #27ae60;
+            --warning: #e67e22;
+            --danger: #c0392b;
+            --bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --border: #dce1e7;
+            --text: #2c3e50;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            margin: 0;
+            padding: 16px;
+            background-color: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+        }
+        h2, h3 { color: var(--primary); margin-top: 0; }
+        
+        .top-bar {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+        }
+        .user-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-grow: 1;
+            max-width: 500px;
+        }
+        .role-tag {
+            background: #e8f4fd;
+            color: var(--primary);
+            border: 1px solid #b6d4fe;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            display: none;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 8px;
+        }
+        .tab-btn {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid transparent;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 0;
+        }
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 15px;
+        }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group.full-width { grid-column: 1 / -1; }
+        
+        label { font-weight: 600; margin-bottom: 5px; font-size: 13px; }
+        select, input[type="text"], input[type="number"], input[type="date"], textarea {
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 70px; }
+        .char-counter { font-size: 11px; color: #7f8c8d; text-align: right; margin-top: 3px; }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            margin-top: 5px;
+        }
+        .checkbox-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            margin: 0;
+            cursor: pointer;
+        }
+        .checkbox-row label {
+            margin: 0;
+            cursor: pointer;
+            font-weight: normal;
+        }
+
+        .availability-banner {
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-weight: bold;
+            display: none;
+        }
+        .avail-ok { background: #e8f8f5; color: #1e8449; border: 1px solid #a3e4d7; }
+        .avail-ko { background: #fdedec; color: #922b21; border: 1px solid #f5b7b1; }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 15px;
+        }
+        button:hover { background-color: var(--primary-hover); }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        
+        .btn-sm { padding: 5px 10px; font-size: 12px; margin-top: 0; }
+        .btn-success { background-color: var(--success); }
+        .btn-success:hover { background-color: #219653; }
+        .btn-danger { background-color: var(--danger); }
+        .btn-danger:hover { background-color: #a93226; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid var(--border); padding: 10px; text-align: left; font-size: 13px; }
+        th { background-color: #f8f9fa; font-weight: 600; }
+        
+        .badge {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            color: white;
+            display: inline-block;
+        }
+        .badge-attente { background-color: var(--warning); }
+        .badge-valide { background-color: var(--success); }
+        .badge-refuse { background-color: var(--danger); }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar">
+        <div>
+            <h2 style="margin:0;">Gestion du Matériel Interne</h2>
+            <small style="color:#666;">Catalogue stock (MATERIEL) & Suivi des prêts (PRET_MATERIEL)</small>
+        </div>
+        <div class="user-selector">
+            <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent connecté :</label>
+            <select id="current-user-select">
+                <option value="">-- Chargement des agents... --</option>
+            </select>
+            <span id="referent-badge" class="role-tag">Référent Matériel</span>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button type="button" class="tab-btn active" onclick="switchTab('demande', this)">1. Nouvelle Demande</button>
+        <button type="button" class="tab-btn" onclick="switchTab('mes-prets', this)">2. Mes Demandes & Retours</button>
+        <button type="button" class="tab-btn" id="tab-btn-referent" style="display:none;" onclick="switchTab('referent', this)">3. Espace Référent (Validation)</button>
+    </div>
+
+    <!-- ONGLET 1 : FORMULAIRE DE DEMANDE -->
+    <div id="tab-demande" class="tab-content active">
+        <div class="card">
+            <h3>Formulaire de réservation de matériel</h3>
+            <form id="loan-form">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="filter-categorie">Filtrer par catégorie :</label>
+                        <select id="filter-categorie">
+                            <option value="">Toutes les catégories</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="select-materiel">Matériel souhaité :</label>
+                        <select id="select-materiel" required>
+                            <option value="">-- Sélectionnez un équipement --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="quantite-demande">Quantité souhaitée :</label>
+                        <input type="number" id="quantite-demande" min="1" value="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="debut-pret">Date de début du prêt :</label>
+                        <input type="date" id="debut-pret" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fin-pret">Date de fin du prêt :</label>
+                        <input type="date" id="fin-pret" required>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="details-demande">Contexte et détails de la demande (250 caractères max) :</label>
+                        <textarea id="details-demande" maxlength="250" placeholder="Précisez l'événement, le lieu, ou le bénéficiaire réel (ex : Élu, DGS, agent externe)..." required></textarea>
+                        <div class="char-counter"><span id="char-count">0</span> / 250 caractères</div>
+                    </div>
+
+                    <!-- Option visible uniquement pour les référents matériel -->
+                    <div class="form-group full-width" id="auto-validate-container" style="display:none;">
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="auto-validate-check">
+                            <label for="auto-validate-check"><strong>Validation immédiate (Mode Référent) :</strong> Valider automatiquement cette demande dès l'enregistrement (prêt pour soi-même, un élu ou la direction).</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="availability-box" class="availability-banner"></div>
+
+                <button type="submit" id="submit-btn">Enregistrer la demande de prêt</button>
+                <p id="form-feedback" style="margin-top:10px; font-weight:bold;"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- ONGLET 2 : MES DEMANDES ET OBSERVATIONS RETOUR -->
+    <div id="tab-mes-prets" class="tab-content">
+        <div class="card">
+            <h3>Mes demandes de matériel en cours</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID Matériel</th>
+                        <th>Matériel</th>
+                        <th>Qté</th>
+                        <th>Période</th>
+                        <th>Référent</th>
+                        <th>Statut</th>
+                        <th>Mon observation retour</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="my-loans-tbody">
+                    <tr><td colspan="8">Sélectionnez votre profil agent en haut de page.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ONGLET 3 : ESPACE REFERENT (VALIDATION & RETOUR PRETEUR) -->
+    <div id="tab-referent" class="tab-content">
+        <div class="card">
+            <h3>Demandes sous ma responsabilité (Validation & Suivi Prêteur)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Demandeur</th>
+                        <th>Matériel</th>
+                        <th>Qté</th>
+                        <th>Période</th>
+                        <th>Contexte</th>
+                        <th>Statut</th>
+                        <th>Observation Prêteur</th>
+                        <th>Décision</th>
+                    </tr>
+                </thead>
+                <tbody id="referent-loans-tbody">
+                    <tr><td colspan="8">Aucune demande à traiter.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // États globaux
+        let recordsPrets = [];      // Enregistrements de PRET_MATERIEL
+        let mapMateriel = {};       // id (rowId Grist) -> { id, IdMateriel, Materiel, Categorie, Quantite, Referent, Service }
+        let listMateriel = [];
+        let mapUsers = {};          // id -> { id, email, service, referentMateriel }
+        let listUsers = [];
+        let currentUserId = null;
+
+        // Initialisation Grist (widget lié à la table PRET_MATERIEL)
+        grist.ready({
+            requiredAccess: 'full',
+            requiredTableAccess: ['PRET_MATERIEL', 'MATERIEL', 'UTILISATEURS']
+        });
+
+        // Écoute des modifications de la table principale PRET_MATERIEL
+        grist.onRecords(function(records) {
+            recordsPrets = records || [];
+            refreshAllViews();
+        });
+
+        // Chargement des tables de référence (UTILISATEURS et MATERIEL)
+        async function loadAllReferenceData() {
+            try {
+                // 1. Chargement UTILISATEURS (avec booléen ReferentMateriel)
+                const usersData = await grist.docApi.fetchTable('UTILISATEURS');
+                mapUsers = {};
+                listUsers = [];
+                if (usersData && usersData.id) {
+                    for (let i = 0; i < usersData.id.length; i++) {
+                        const u = {
+                            id: usersData.id[i],
+                            email: usersData.Email ? usersData.Email[i] : `Agent #${usersData.id[i]}`,
+                            service: usersData.Service ? usersData.Service[i] : null,
+                            referentMateriel: usersData.ReferentMateriel ? Boolean(usersData.ReferentMateriel[i]) : false
+                        };
+                        mapUsers[u.id] = u;
+                        listUsers.push(u);
+                    }
+                }
+                populateUserSelect();
+
+                // 2. Chargement du catalogue MATERIEL (Categorie en Choix unique = texte direct)
+                const matData = await grist.docApi.fetchTable('MATERIEL');
+                mapMateriel = {};
+                listMateriel = [];
+                if (matData && matData.id) {
+                    for (let i = 0; i < matData.id.length; i++) {
+                        const item = {
+                            id: matData.id[i],
+                            IdMateriel: matData.IdMateriel ? matData.IdMateriel[i] : '',
+                            Materiel: matData.Materiel ? matData.Materiel[i] : '',
+                            Categorie: matData.Categorie ? String(matData.Categorie[i]).trim() : '',
+                            Quantite: matData.Quantite !== undefined && matData.Quantite[i] !== null ? Number(matData.Quantite[i]) : 1,
+                            Referent: matData.Referent ? Number(matData.Referent[i]) : null,
+                            Service: matData.Service ? matData.Service[i] : null
+                        };
+                        mapMateriel[item.id] = item;
+                        listMateriel.push(item);
+                    }
+                }
+
+                populateCategoriesFromMateriel();
+                refreshAllViews();
+            } catch (err) {
+                console.error("Erreur lors du chargement des tables de référence :", err);
+            }
+        }
+
+        loadAllReferenceData();
+
+        function populateUserSelect() {
+            const select = document.getElementById('current-user-select');
+            select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>';
+            listUsers.forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u.id;
+                opt.textContent = u.email;
+                select.appendChild(opt);
+            });
+        }
+
+        // Extraction dynamique des choix uniques présents dans MATERIEL.Categorie
+        function populateCategoriesFromMateriel() {
+            const catSelect = document.getElementById('filter-categorie');
+            const currentCat = catSelect.value;
+            const categoriesSet = new Set();
+
+            listMateriel.forEach(item => {
+                if (item.Categorie) {
+                    categoriesSet.add(item.Categorie);
+                }
+            });
+
+            catSelect.innerHTML = '<option value="">Toutes les catégories</option>';
+            Array.from(categoriesSet).sort().forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                catSelect.appendChild(opt);
+            });
+
+            if (categoriesSet.has(currentCat)) {
+                catSelect.value = currentCat;
+            }
+        }
+
+        function isCurrentUserReferent() {
+            if (!currentUserId) return false;
+            const userObj = mapUsers[currentUserId];
+            const hasFlag = userObj && userObj.referentMateriel === true;
+            const isAssignedToItem = listMateriel.some(m => m.Referent === currentUserId);
+            return hasFlag || isAssignedToItem;
+        }
+
+        document.getElementById('current-user-select').addEventListener('change', function(e) {
+            currentUserId = e.target.value ? Number(e.target.value) : null;
+            updateReferentUI();
+            refreshAllViews();
+        });
+
+        function updateReferentUI() {
+            const isRef = isCurrentUserReferent();
+            document.getElementById('tab-btn-referent').style.display = isRef ? 'inline-block' : 'none';
+            document.getElementById('referent-badge').style.display = isRef ? 'inline-block' : 'none';
+            document.getElementById('auto-validate-container').style.display = isRef ? 'block' : 'none';
+            if (!isRef) {
+                document.getElementById('auto-validate-check').checked = false;
+            }
+        }
+
+        window.switchTab = function(tabName, btnElement) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            btnElement.classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        };
+
+        document.getElementById('details-demande').addEventListener('input', function() {
+            document.getElementById('char-count').textContent = this.value.length;
+        });
+
+        document.getElementById('filter-categorie').addEventListener('change', populateMaterielSelect);
+        document.getElementById('select-materiel').addEventListener('change', checkAvailability);
+        document.getElementById('quantite-demande').addEventListener('input', checkAvailability);
+        document.getElementById('debut-pret').addEventListener('change', checkAvailability);
+        document.getElementById('fin-pret').addEventListener('change', checkAvailability);
+
+        function populateMaterielSelect() {
+            const catFilter = document.getElementById('filter-categorie').value;
+            const select = document.getElementById('select-materiel');
+            const currentVal = select.value;
+            
+            select.innerHTML = '<option value="">-- Sélectionnez un équipement --</option>';
+            
+            listMateriel.forEach(item => {
+                if (!catFilter || item.Categorie === catFilter) {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    const catLabel = item.Categorie ? ` [${item.Categorie}]` : '';
+                    opt.textContent = `${item.IdMateriel} - ${item.Materiel}${catLabel} (Stock : ${item.Quantite})`;
+                    select.appendChild(opt);
+                }
+            });
+
+            if (currentVal && mapMateriel[currentVal]) {
+                select.value = currentVal;
+            }
+            checkAvailability();
+        }
+
+        // Calcul dynamique de la disponibilité en croisant MATERIEL.Quantite et PRET_MATERIEL.Quantite
+        function checkAvailability() {
+            const matRowId = Number(document.getElementById('select-materiel').value);
+            const qteDemandee = parseInt(document.getElementById('quantite-demande').value) || 1;
+            const debut = document.getElementById('debut-pret').value;
+            const fin = document.getElementById('fin-pret').value;
+            const banner = document.getElementById('availability-box');
+            const submitBtn = document.getElementById('submit-btn');
+
+            if (!matRowId || !debut || !fin) {
+                banner.style.display = 'none';
+                return;
+            }
+
+            if (debut > fin) {
+                banner.style.display = 'block';
+                banner.className = 'availability-banner avail-ko';
+                banner.textContent = "⚠️ La date de début doit être antérieure ou égale à la date de fin.";
+                submitBtn.disabled = true;
+                return;
+            }
+
+            const itemCatalog = mapMateriel[matRowId];
+            if (!itemCatalog) return;
+
+            const stockTotal = itemCatalog.Quantite;
+
+            let qteDejaPretee = 0;
+            recordsPrets.forEach(pret => {
+                if (Number(pret.Materiel) !== matRowId) return;
+                if (!pret.DebutPret || !pret.FinPret) return;
+                if (pret.Statut === 'Refusé' || pret.Statut === 'Clôturé') return;
+                
+                if (debut <= pret.FinPret && fin >= pret.DebutPret) {
+                    qteDejaPretee += (pret.Quantite ? Number(pret.Quantite) : 1);
+                }
+            });
+
+            const qteDisponible = Math.max(0, stockTotal - qteDejaPretee);
+
+            banner.style.display = 'block';
+            if (qteDisponible >= qteDemandee) {
+                banner.className = 'availability-banner avail-ok';
+                banner.textContent = `✅ Disponible : ${qteDisponible} exemplaire(s) libre(s) sur ${stockTotal} pour cette période.`;
+                submitBtn.disabled = false;
+            } else {
+                banner.className = 'availability-banner avail-ko';
+                banner.textContent = `❌ Stock insuffisant : Seulement ${qteDisponible} exemplaire(s) disponible(s) sur ${stockTotal} (vous en demandez ${qteDemandee}).`;
+                submitBtn.disabled = true;
+            }
+        }
+
+        // Enregistrement de la demande dans PRET_MATERIEL
+        document.getElementById('loan-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const feedback = document.getElementById('form-feedback');
+
+            if (!currentUserId) {
+                feedback.style.color = 'red';
+                feedback.textContent = "Veuillez sélectionner votre nom en haut de page avant de réserver.";
+                return;
+            }
+
+            const matRowId = Number(document.getElementById('select-materiel').value);
+            const itemCatalog = mapMateriel[matRowId];
+            if (!itemCatalog) return;
+
+            const qteDemandee = parseInt(document.getElementById('quantite-demande').value) || 1;
+            const todayStr = new Date().toISOString().split('T')[0];
+            const autoValidate = isCurrentUserReferent() && document.getElementById('auto-validate-check').checked;
+
+            const payload = {
+                Materiel: matRowId,
+                Quantite: qteDemandee,
+                Demandeur: currentUserId,
+                Referent: itemCatalog.Referent || (isCurrentUserReferent() ? currentUserId : null),
+                Service: itemCatalog.Service || null,
+                DateDemande: todayStr,
+                DebutPret: document.getElementById('debut-pret').value,
+                FinPret: document.getElementById('fin-pret').value,
+                DetailsDemande: document.getElementById('details-demande').value.trim(),
+                Statut: autoValidate ? 'Validé' : 'En attente'
+            };
+
+            if (autoValidate) {
+                payload.DateValidation = todayStr;
+            }
+
+            try {
+                await grist.selectedTable.create([payload]);
+
+                feedback.style.color = 'green';
+                feedback.textContent = autoValidate 
+                    ? "✅ Demande enregistrée et validée automatiquement." 
+                    : "✅ Votre demande a bien été enregistrée et transmise au référent.";
+                
+                document.getElementById('loan-form').reset();
+                document.getElementById('quantite-demande').value = 1;
+                document.getElementById('char-count').textContent = '0';
+                document.getElementById('availability-box').style.display = 'none';
+            } catch (err) {
+                feedback.style.color = 'red';
+                feedback.textContent = "Erreur lors de l'enregistrement : " + err.message;
+            }
+        });
+
+        function refreshAllViews() {
+            populateMaterielSelect();
+            updateReferentUI();
+            renderMyLoans();
+            renderReferentLoans();
+        }
+
+        function formatStatusBadge(statut) {
+            const s = statut || 'En attente';
+            if (s === 'Validé') return `<span class="badge badge-valide">Validé</span>`;
+            if (s === 'Refusé') return `<span class="badge badge-refuse">Refusé</span>`;
+            return `<span class="badge badge-attente">${s}</span>`;
+        }
+
+        function renderMyLoans() {
+            const tbody = document.getElementById('my-loans-tbody');
+            if (!currentUserId) {
+                tbody.innerHTML = '<tr><td colspan="8">Veuillez sélectionner votre profil agent en haut de page.</td></tr>';
+                return;
+            }
+
+            const myRecords = recordsPrets.filter(p => Number(p.Demandeur) === currentUserId);
+            if (myRecords.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8">Aucune demande enregistrée à votre nom.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            myRecords.forEach(p => {
+                const matObj = mapMateriel[p.Materiel] || {};
+                const refId = p.Referent || matObj.Referent;
+                const refEmail = refId && mapUsers[refId] ? mapUsers[refId].email : '-';
+                const obsVal = p.ObservationRetourDemandeur || '';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${matObj.IdMateriel || '-'}</td>
+                    <td><strong>${matObj.Materiel || 'Matériel inconnu'}</strong></td>
+                    <td>${p.Quantite || 1}</td>
+                    <td>Du ${p.DebutPret || '?'} au ${p.FinPret || '?'}</td>
+                    <td>${refEmail}</td>
+                    <td>${formatStatusBadge(p.Statut)}</td>
+                    <td>
+                        <input type="text" id="obs-dem-${p.id}" value="${obsVal.replace(/"/g, '&quot;')}" placeholder="État au retour...">
+                    </td>
+                    <td>
+                        <button type="button" class="btn-sm" onclick="saveDemandeurObs(${p.id})">Enregistrer</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderReferentLoans() {
+            const tbody = document.getElementById('referent-loans-tbody');
+            if (!currentUserId) return;
+
+            // Un référent voit les demandes du matériel dont il est référent OU celles qu'il a lui-même créées en tant que référent
+            const refRecords = recordsPrets.filter(p => {
+                const matObj = mapMateriel[p.Materiel];
+                const isItemRef = matObj && matObj.Referent === currentUserId;
+                const isExplicitRef = Number(p.Referent) === currentUserId;
+                const isSelfRequestAsRef = Number(p.Demandeur) === currentUserId && isCurrentUserReferent();
+                return isItemRef || isExplicitRef || isSelfRequestAsRef;
+            });
+
+            if (refRecords.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8">Aucune demande de prêt à traiter.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            refRecords.forEach(p => {
+                const matObj = mapMateriel[p.Materiel] || {};
+                const demEmail = mapUsers[p.Demandeur] ? mapUsers[p.Demandeur].email : `Agent #${p.Demandeur}`;
+                const obsPret = p.ObservationRetourPreteur || '';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${demEmail}</td>
+                    <td><strong>${matObj.Materiel || ''}</strong> (${matObj.IdMateriel || ''})</td>
+                    <td>${p.Quantite || 1}</td>
+                    <td>Du ${p.DebutPret || '?'} au ${p.FinPret || '?'}</td>
+                    <td>${p.DetailsDemande || ''}</td>
+                    <td>${formatStatusBadge(p.Statut)}</td>
+                    <td>
+                        <input type="text" id="obs-pret-${p.id}" value="${obsPret.replace(/"/g, '&quot;')}" placeholder="Contrôle retour...">
+                        <button type="button" class="btn-sm" style="margin-top:4px;" onclick="savePreteurObs(${p.id})">Noter</button>
+                    </td>
+                    <td>
+                        <button type="button" class="btn-sm btn-success" onclick="decideLoan(${p.id}, 'Validé')">Valider</button>
+                        <button type="button" class="btn-sm btn-danger" onclick="decideLoan(${p.id}, 'Refusé')">Refuser</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Actions de mise à jour dans PRET_MATERIEL
+        window.decideLoan = async function(rowId, decision) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            try {
+                await grist.selectedTable.update([{
+                    id: rowId,
+                    Statut: decision,
+                    DateValidation: todayStr
+                }]);
+            } catch (err) {
+                alert("Erreur lors de la validation : " + err.message);
+            }
+        };
+
+        window.saveDemandeurObs = async function(rowId) {
+            const val = document.getElementById(`obs-dem-${rowId}`).value;
+            try {
+                await grist.selectedTable.update([{
+                    id: rowId,
+                    ObservationRetourDemandeur: val
+                }]);
+                alert("Observation enregistrée.");
+            } catch (err) {
+                alert("Erreur : " + err.message);
+            }
+        };
+
+        window.savePreteurObs = async function(rowId) {
+            const val = document.getElementById(`obs-pret-${rowId}`).value;
+            try {
+                await grist.selectedTable.update([{
+                    id: rowId,
+                    ObservationRetourPreteur: val
+                }]);
+                alert("Observation prêteur enregistrée.");
+            } catch (err) {
+                alert("Erreur : " + err.message);
+            }
+        };
+    </script>
+</body>
+</html>
