@@ -318,7 +318,7 @@
         // Initialisation Grist (widget lié à la table PRET_MATERIEL)
         grist.ready({
             requiredAccess: 'full',
-            requiredTableAccess: ['PRET_MATERIEL', 'MATERIEL', 'UTILISATEURS']
+            requiredTableAccess: ['PRET_MATERIEL', 'MATERIEL', 'Utilisateurs']
         });
 
         // Écoute des modifications de la table principale PRET_MATERIEL
@@ -327,20 +327,24 @@
             refreshAllViews();
         });
 
-        // Chargement des tables de référence (UTILISATEURS et MATERIEL)
+        // Chargement des tables de référence (Utilisateurs et MATERIEL)
         async function loadAllReferenceData() {
             try {
-                // 1. Chargement UTILISATEURS (avec booléen ReferentMateriel)
-                const usersData = await grist.docApi.fetchTable('UTILISATEURS');
+                // 1. Chargement de la table "Utilisateurs" (avec booléen ReferentMateriel)
+                const usersData = await grist.docApi.fetchTable('Utilisateurs');
                 mapUsers = {};
                 listUsers = [];
                 if (usersData && usersData.id) {
+                    const emailCol = Object.keys(usersData).find(k => ['email', 'mail', 'utilisateur', 'nom'].includes(k.toLowerCase())) || 'Email';
+                    const refCol = Object.keys(usersData).find(k => k.toLowerCase() === 'referentmateriel');
+                    const serviceCol = Object.keys(usersData).find(k => k.toLowerCase() === 'service');
+
                     for (let i = 0; i < usersData.id.length; i++) {
                         const u = {
                             id: usersData.id[i],
-                            email: usersData.Email ? usersData.Email[i] : `Agent #${usersData.id[i]}`,
-                            service: usersData.Service ? usersData.Service[i] : null,
-                            referentMateriel: usersData.ReferentMateriel ? Boolean(usersData.ReferentMateriel[i]) : false
+                            email: usersData[emailCol] ? usersData[emailCol][i] : `Agent #${usersData.id[i]}`,
+                            service: serviceCol && usersData[serviceCol] ? usersData[serviceCol][i] : null,
+                            referentMateriel: refCol && usersData[refCol] ? Boolean(usersData[refCol][i]) : false
                         };
                         mapUsers[u.id] = u;
                         listUsers.push(u);
@@ -348,7 +352,7 @@
                 }
                 populateUserSelect();
 
-                // 2. Chargement du catalogue MATERIEL (Categorie en Choix unique = texte direct)
+                // 2. Chargement du catalogue "MATERIEL" (Categorie en Choix unique = texte direct)
                 const matData = await grist.docApi.fetchTable('MATERIEL');
                 mapMateriel = {};
                 listMateriel = [];
@@ -372,6 +376,8 @@
                 refreshAllViews();
             } catch (err) {
                 console.error("Erreur lors du chargement des tables de référence :", err);
+                const select = document.getElementById('current-user-select');
+                select.innerHTML = `<option value="">⚠️ Erreur : ${err.message}</option>`;
             }
         }
 
@@ -381,10 +387,12 @@
             const select = document.getElementById('current-user-select');
             select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>';
             listUsers.forEach(u => {
-                const opt = document.createElement('option');
-                opt.value = u.id;
-                opt.textContent = u.email;
-                select.appendChild(opt);
+                if (u.email) {
+                    const opt = document.createElement('option');
+                    opt.value = u.id;
+                    opt.textContent = u.email;
+                    select.appendChild(opt);
+                }
             });
         }
 
@@ -395,7 +403,7 @@
             const categoriesSet = new Set();
 
             listMateriel.forEach(item => {
-                if (item.Categorie) {
+                if (item.Categorie && item.Categorie !== 'null' && item.Categorie !== 'undefined') {
                     categoriesSet.add(item.Categorie);
                 }
             });
@@ -466,7 +474,7 @@
                 if (!catFilter || item.Categorie === catFilter) {
                     const opt = document.createElement('option');
                     opt.value = item.id;
-                    const catLabel = item.Categorie ? ` [${item.Categorie}]` : '';
+                    const catLabel = item.Categorie && item.Categorie !== 'null' ? ` [${item.Categorie}]` : '';
                     opt.textContent = `${item.IdMateriel} - ${item.Materiel}${catLabel} (Stock : ${item.Quantite})`;
                     select.appendChild(opt);
                 }
@@ -640,7 +648,6 @@
             const tbody = document.getElementById('referent-loans-tbody');
             if (!currentUserId) return;
 
-            // Un référent voit les demandes du matériel dont il est référent OU celles qu'il a lui-même créées en tant que référent
             const refRecords = recordsPrets.filter(p => {
                 const matObj = mapMateriel[p.Materiel];
                 const isItemRef = matObj && matObj.Referent === currentUserId;
