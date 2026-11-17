@@ -187,9 +187,9 @@
             <small style="color:#666;">Catalogue stock (MATERIEL) & Suivi des prêts (PRET_MATERIEL)</small>
         </div>
         <div class="user-selector">
-            <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent connecté :</label>
+            <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent :</label>
             <select id="current-user-select">
-                <option value="">-- Sélectionnez votre nom --</option>
+                <option value="">-- Chargement... --</option>
             </select>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
@@ -238,15 +238,14 @@
 
                     <div class="form-group full-width">
                         <label for="details-demande">Contexte et détails de la demande (250 caractères max) :</label>
-                        <textarea id="details-demande" maxlength="250" placeholder="Précisez l'événement, le lieu, ou le bénéficiaire réel (ex : Élu, DGS, agent externe)..." required></textarea>
+                        <textarea id="details-demande" maxlength="250" placeholder="Précisez l'événement, le lieu, ou le bénéficiaire réel..." required></textarea>
                         <div class="char-counter"><span id="char-count">0</span> / 250 caractères</div>
                     </div>
 
-                    <!-- Option visible uniquement pour les référents matériel -->
                     <div class="form-group full-width" id="auto-validate-container" style="display:none;">
                         <div class="checkbox-row">
                             <input type="checkbox" id="auto-validate-check">
-                            <label for="auto-validate-check"><strong>Validation immédiate (Mode Référent) :</strong> Valider automatiquement cette demande dès l'enregistrement (prêt pour soi-même, un élu ou la direction).</label>
+                            <label for="auto-validate-check"><strong>Validation immédiate (Mode Référent) :</strong> Valider automatiquement cette demande dès l'enregistrement.</label>
                         </div>
                     </div>
                 </div>
@@ -317,6 +316,20 @@
 
         grist.ready({ requiredAccess: 'full' });
 
+        // Si le widget est lié à une table ou ligne active (comme les cartes ICOM)
+        grist.onRecord(function(record) {
+            if (record && record.id) {
+                // Si la ligne sélectionnée vient de la table Utilisateurs
+                if (mapUsers[record.id] || record.NomComplet || record.Email) {
+                    currentUserId = record.id;
+                    const select = document.getElementById('current-user-select');
+                    if (select) select.value = record.id;
+                    updateReferentUI();
+                    refreshAllViews();
+                }
+            }
+        });
+
         grist.onRecords(function(records) {
             recordsPrets = records || [];
             refreshAllViews();
@@ -365,7 +378,7 @@
 
         async function initApp() {
             try {
-                // 1. Chargement de la table Utilisateurs pour le menu déroulant d'identification
+                // 1. Chargement de la table Utilisateurs
                 const usersTable = await resolveTableName('Utilisateurs');
                 if (usersTable) {
                     const usersData = await grist.docApi.fetchTable(usersTable);
@@ -417,11 +430,16 @@
                     populateMaterielSelect();
                 }
 
-                // Restauration automatique du dernier agent sélectionné sur ce navigateur
+                // Restauration de l'agent si mémorisé
                 const savedId = localStorage.getItem('grist_mat_uid');
                 if (savedId && mapUsers[Number(savedId)]) {
                     document.getElementById('current-user-select').value = savedId;
                     currentUserId = Number(savedId);
+                    updateReferentUI();
+                } else if (listUsers.length > 0) {
+                    // Sélection par défaut du premier pour débloquer immédiatement
+                    document.getElementById('current-user-select').value = listUsers[0].id;
+                    currentUserId = listUsers[0].id;
                     updateReferentUI();
                 }
 
@@ -649,7 +667,7 @@
         function renderMyLoans() {
             const tbody = document.getElementById('my-loans-tbody');
             if (!currentUserId) {
-                tbody.innerHTML = '<tr><td colspan="8">Veuillez sélectionner votre nom en haut de page.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8">Veuillez sélectionner votre profil agent en haut de page.</td></tr>';
                 return;
             }
 
