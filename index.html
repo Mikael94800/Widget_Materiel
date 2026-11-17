@@ -206,7 +206,7 @@ function overlaps(start1, end1, start2, end2) {
 function reservationsConcernees(materielId, debut, fin) {
   return prets.filter(p =>
     Number(p.Materiel) === Number(materielId) &&
-    ["En attente", "Validé"].includes(p.Statut) &&
+    ["["En attente", "Validé", "En cours"].includes(p.Statut) &&
     p.DebutPret != null &&
     p.FinPret != null &&
     overlaps(
