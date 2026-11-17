@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Gestion Matériel - Test </title>
+    <title>Gestion Matériel Interne</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <style>
         :root {
@@ -70,8 +70,8 @@
 
     <div class="top-bar">
         <div>
-            <h2 style="margin:0;">Gestion du Matériel (Méthode ICOM)</h2>
-            <small style="color:#666;">Authentification automatique par e-mail de session</small>
+            <h2 style="margin:0;">Gestion du Matériel Interne</h2>
+            <small style="color:#666;">Authentification automatique & Suivi des prêts</small>
         </div>
         <div>
             <span id="user-display" class="user-info">Identification en cours...</span>
@@ -171,7 +171,6 @@
 
         grist.ready({ requiredAccess: 'full' });
 
-        // 1. Récupération de l'utilisateur par l'e-mail de session (Principe ICOM)
         grist.onUser(async function(user) {
             if (user && user.email) {
                 currentUserEmail = user.email.trim().toLowerCase();
@@ -191,7 +190,7 @@
 
         async function loadDatabaseContext() {
             try {
-                // Charger la table Utilisateurs pour mapper l'e-mail de session à un ID Grist
+                // Utilisation de l'ID natif Grist pour identifier l'utilisateur
                 const userTable = await resolveTableName('Utilisateurs');
                 if (userTable) {
                     const userData = await grist.docApi.fetchTable(userTable);
@@ -211,7 +210,7 @@
                     }
                 }
 
-                // Fallback si l'e-mail de session ne matche pas directement (sécurité test)
+                // Fallback de test si l'e-mail de session ne matche pas directement (ex: test local)
                 if (!currentUserId && Object.keys(mapUsers).length > 0) {
                     currentUserId = Number(Object.keys(mapUsers)[0]);
                     isReferent = mapUsers[currentUserId].ref;
@@ -219,7 +218,6 @@
 
                 updateUserInterface();
 
-                // Charger le catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
@@ -229,8 +227,7 @@
                             listMateriel.push({
                                 id: matData.id[i],
                                 nom: matData.Materiel ? String(matData.Materiel[i]) : '',
-                                quantite: matData.Quantite ? Number(matData.Quantite[i]) : 1,
-                                referents: Array.isArray(matData.Referent) ? matData.Referent.filter(x => typeof x === 'number') : []
+                                quantite: matData.Quantite ? Number(matData.Quantite[i]) : 1
                             });
                         }
                     }
@@ -238,7 +235,7 @@
                 }
                 renderViews();
             } catch (e) {
-                console.error("Erreur de chargement contextuel :", e);
+                console.error("Erreur de chargement :", e);
             }
         }
 
