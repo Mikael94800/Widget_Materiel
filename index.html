@@ -2,91 +2,42 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Authentification ICOM</title>
+    <title>Authentification Widget ICOM</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <style>
-        :root {
-            --primary: #1f4e78;
-            --success: #27ae60;
-            --bg: #f4f6f9;
-            --card-bg: #ffffff;
-            --border: #dce1e7;
-            --text: #2c3e50;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            margin: 0;
-            padding: 16px;
-            background-color: var(--bg);
-            color: var(--text);
-            font-size: 14px;
-        }
-        .card {
-            background: var(--card-bg);
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            max-width: 600px;
-            margin: 0 auto;
-        }
-        h2 { color: var(--primary); margin-top: 0; }
-        .status-box {
-            padding: 15px;
-            border-radius: 6px;
-            margin-top: 15px;
-            font-weight: bold;
-            background: #e8f8f5;
-            color: var(--success);
-            border: 1px solid #a3e4d7;
-        }
-        pre {
-            background: #f8f9fa;
-            padding: 10px;
-            border-radius: 4px;
-            font-size: 12px;
-            overflow-x: auto;
-            border: 1px solid var(--border);
-        }
+        body { font-family: sans-serif; padding: 20px; background: #f4f6f9; color: #2c3e50; }
+        .card { background: white; padding: 20px; border-radius: 8px; border: 1px solid #dce1e7; max-width: 600px; margin: 0 auto; }
+        .status { padding: 15px; border-radius: 6px; font-weight: bold; background: #e8f8f5; color: #1e8449; border: 1px solid #a3e4d7; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 12px; overflow-x: auto; border: 1px solid #dce1e7; margin-top: 15px; }
     </style>
 </head>
 <body>
-
     <div class="card">
         <h2>Module d'Identification (Modèle ICOM)</h2>
-        <div id="status-box" class="status-box">
-            ⏳ En attente de sélection d'un agent dans Grist...
-        </div>
-
-        <h3 style="margin-top: 20px;">Données de l'agent actif :</h3>
-        <pre id="record-data">Aucune ligne sélectionnée</pre>
+        <div id="status" class="status">En attente de sélection...</div>
+        <pre id="details">Aucune ligne sélectionnée</pre>
     </div>
 
     <script>
-        // Initialisation standard Grist
         grist.ready({ requiredAccess: 'full' });
 
-        // C'est la méthode exacte utilisée par vos cartes ICOM : 
-        // Le widget écoute l'enregistrement actif de la table source liée dans Grist.
+        // Modèle exact du widget ICOM : écoute de la ligne active de la table liée
         grist.onRecord(function(record) {
-            const statusBox = document.getElementById('status-box');
-            const recordData = document.getElementById('record-data');
-
+            const statusDiv = document.getElementById('status');
+            const detailsPre = document.getElementById('details');
+            
             if (record) {
-                recordData.textContent = JSON.stringify(record, null, 2);
+                detailsPre.textContent = JSON.stringify(record, null, 2);
                 
-                // Récupération du nom ou de l'email selon les colonnes de votre table Utilisateurs
-                const agentName = record.NomComplet || record.Email || `Agent #${record.id}`;
-                const isReferent = record.ReferentMateriel ? " (Référent Matériel)" : "";
-                
-                statusBox.style.background = "#e8f8f5";
-                statusBox.style.color = "#1e8449";
-                statusBox.textContent = `✅ Agent actif : ${agentName}${isReferent}`;
+                // Recherche des champs d'identification communs (Nom, Email, etc.)
+                const nom = record.NomComplet || record.Nom || record.Email || `ID #${record.id}`;
+                statusDiv.textContent = `✅ Agent actif détecté : ${nom}`;
             } else {
-                statusBox.style.background = "#fdedec";
-                statusBox.style.color = "#922b21";
-                statusBox.textContent = "⚠️ Aucun enregistrement actif. Vérifiez que ce widget est configuré en vue liée sur la table 'Utilisateurs'.";
-                recordData.textContent = "Aucune donnée";
+                statusDiv.style.background = "#fdedec";
+                statusDiv.style.color = "#922b21";
+                statusDiv.style.borderColor = "#f5b7b1";
+                statusDiv.textContent = "⚠️ Aucun enregistrement actif reçu de la vue liée.";
+                detailsPre.textContent = "Aucune donnée";
             }
         });
     </script>
