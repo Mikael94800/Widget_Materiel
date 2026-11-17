@@ -61,6 +61,7 @@
             color: var(--success);
             font-weight: 600;
             display: none;
+            margin-top: 3px;
         }
         
         .tabs {
@@ -98,14 +99,14 @@
 
         .form-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 15px;
         }
         .form-group { display: flex; flex-direction: column; }
         .form-group.full-width { grid-column: 1 / -1; }
         
         label { font-weight: 600; margin-bottom: 5px; font-size: 13px; }
-        select, input[type="text"], input[type="number"], input[type="date"], textarea {
+        select, input[type="text"], input[type="number"], input[type="datetime-local"], textarea {
             padding: 8px 10px;
             border: 1px solid #ccc;
             border-radius: 4px;
@@ -200,7 +201,7 @@
                         <option value="">-- Chargement des agents... --</option>
                     </select>
                 </div>
-                <div id="auto-auth-info" class="auto-auth-status">✓ Identifié automatiquement via votre session Grist</div>
+                <div id="auto-auth-info" class="auto-auth-status">✓ Identifié automatiquement via Grist</div>
             </div>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
@@ -238,13 +239,13 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="debut-pret">Date de début du prêt :</label>
-                        <input type="date" id="debut-pret" required>
+                        <label for="debut-pret">Date et heure de début :</label>
+                        <input type="datetime-local" id="debut-pret" required>
                     </div>
 
                     <div class="form-group">
-                        <label for="fin-pret">Date de fin du prêt :</label>
-                        <input type="date" id="fin-pret" required>
+                        <label for="fin-pret">Date et heure de fin :</label>
+                        <input type="datetime-local" id="fin-pret" required>
                     </div>
 
                     <div class="form-group full-width">
@@ -262,7 +263,6 @@
                     </div>
                 </div>
 
-                <!-- Message dynamique de disponibilité ou d'indisponibilité -->
                 <div id="availability-box" class="availability-banner"></div>
 
                 <button type="submit" id="submit-btn">Enregistrer la demande de prêt</button>
@@ -271,7 +271,7 @@
         </div>
     </div>
 
-    <!-- ONGLET 2 : MES DEMANDES ET OBSERVATIONS RETOUR -->
+    <!-- ONGLET 2 : MES DEMANDES ET RETOURS -->
     <div id="tab-mes-prets" class="tab-content">
         <div class="card">
             <h3>Mes demandes de matériel en cours</h3>
@@ -282,7 +282,7 @@
                         <th>Matériel</th>
                         <th>Qté</th>
                         <th>Période</th>
-                        <th>Référent</th>
+                        <th>Référent(s)</th>
                         <th>Statut</th>
                         <th>Mon observation retour</th>
                         <th>Action</th>
@@ -295,7 +295,7 @@
         </div>
     </div>
 
-    <!-- ONGLET 3 : ESPACE REFERENT (VALIDATION & RETOUR PRETEUR) -->
+    <!-- ONGLET 3 : ESPACE REFERENT -->
     <div id="tab-referent" class="tab-content">
         <div class="card">
             <h3>Demandes sous ma responsabilité (Validation & Suivi Prêteur)</h3>
@@ -320,54 +320,28 @@
     </div>
 
     <script>
-        // États globaux
         let recordsPrets = [];
         let mapMateriel = {};
         let listMateriel = [];
         let mapUsers = {};
         let listUsers = [];
         let currentUserId = null;
-        let detectedGristEmail = null;
+        let gristSessionEmail = null;
 
-        // Dictionnaire des vrais noms techniques (ID) des colonnes de PRET_MATERIEL
-        let pretCols = {
-            Materiel: 'Materiel',
-            Quantite: 'Quantite',
-            Demandeur: 'Demandeur',
-            Referent: 'Referent',
-            Service: 'Service',
-            DateDemande: 'DateDemande',
-            DateValidation: 'DateValidation',
-            DebutPret: 'DebutPret',
-            FinPret: 'FinPret',
-            DetailsDemande: 'DetailsDemande',
-            Statut: 'Statut',
-            ObservationRetourPreteur: 'ObservationRetourPreteur',
-            ObservationRetourDemandeur: 'ObservationRetourDemandeur'
-        };
+        grist.ready({ requiredAccess: 'full' });
 
-        // Initialisation Grist
-        grist.ready({
-            requiredAccess: 'full'
-        });
-
-        // 1. Écoute de l'utilisateur connecté via la session Grist (authentification automatique)
+        // Récupération de l'email de session Grist
         grist.onUser(function(user) {
             if (user && user.email) {
-                detectedGristEmail = user.email.trim().toLowerCase();
+                gristSessionEmail = user.email.trim().toLowerCase();
                 tryAutoSelectUser();
             }
         });
 
-        // 2. Écoute des enregistrements de la table PRET_MATERIEL
         grist.onRecords(function(records) {
             recordsPrets = records || [];
             refreshAllViews();
         });
-
-        function normalizeStr(s) {
-            return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        }
 
         function cleanGristValue(val) {
             if (val === null || val === undefined) return '';
@@ -379,58 +353,59 @@
             return str;
         }
 
+        function extractRefIds(val) {
+            if (!val) return [];
+            if (typeof val === 'number') return [val];
+            if (Array.isArray(val)) {
+                return val.filter(item => typeof item === 'number');
+            }
+            const num = Number(val);
+            return isNaN(num) || num === 0 ? [] : [num];
+        }
+
+        function parseGristDateTimeToMs(val) {
+            if (!val) return null;
+            if (typeof val === 'number') {
+                return val < 10000000000 ? val * 1000 : val;
+            }
+            const d = new Date(val);
+            return isNaN(d.getTime()) ? null : d.getTime();
+        }
+
+        function formatDateTimeFr(val) {
+            const ms = parseGristDateTimeToMs(val);
+            if (!ms) return '?';
+            const d = new Date(ms);
+            return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
         async function resolveTableName(targetName) {
             const tables = await grist.docApi.listTables();
             return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
         }
 
-        // Détection automatique des vrais noms techniques des colonnes d'une table Grist
-        function mapTableColumns(tableObj, expectedKeys) {
-            const actualKeys = Object.keys(tableObj).filter(k => k !== 'id' && k !== 'manualSort');
-            const mapped = {};
-            expectedKeys.forEach(exp => {
-                const normExp = normalizeStr(exp);
-                const found = actualKeys.find(act => normalizeStr(act) === normExp);
-                mapped[exp] = found || exp;
-            });
-            return mapped;
-        }
-
-        // Chargement des tables de référence et détection de structure
         async function loadAllReferenceData() {
             try {
-                // A. Détection des colonnes réelles de PRET_MATERIEL pour garantir l'écriture des données
-                const pretTableName = await resolveTableName('PRET_MATERIEL');
-                if (pretTableName) {
-                    const pretData = await grist.docApi.fetchTable(pretTableName);
-                    pretCols = mapTableColumns(pretData, Object.keys(pretCols));
-                }
-
-                // B. Chargement de la table Utilisateurs
+                // 1. Chargement de la table Utilisateurs
                 const usersTable = await resolveTableName('Utilisateurs');
-                if (!usersTable) {
-                    const allTables = await grist.docApi.listTables();
-                    throw new Error(`Table Utilisateurs introuvable (tables : ${allTables.join(', ')})`);
-                }
+                if (!usersTable) throw new Error("Table Utilisateurs introuvable.");
 
                 const usersData = await grist.docApi.fetchTable(usersTable);
                 mapUsers = {};
                 listUsers = [];
                 if (usersData && usersData.id) {
-                    const keys = Object.keys(usersData);
-                    const emailCol = keys.find(k => ['email', 'mail', 'utilisateur', 'nom'].includes(normalizeStr(k))) || 'Email';
-                    const refCol = keys.find(k => normalizeStr(k) === 'referentmateriel');
-                    const serviceCol = keys.find(k => normalizeStr(k) === 'service');
-
                     for (let i = 0; i < usersData.id.length; i++) {
-                        const rawLabel = usersData[emailCol] ? cleanGristValue(usersData[emailCol][i]) : '';
-                        if (!rawLabel) continue;
+                        const emailVal = usersData.Email ? cleanGristValue(usersData.Email[i]) : '';
+                        const nomVal = usersData.NomComplet ? cleanGristValue(usersData.NomComplet[i]) : '';
+                        const label = nomVal || emailVal;
+                        if (!label) continue;
 
                         const u = {
                             id: usersData.id[i],
-                            email: rawLabel,
-                            service: serviceCol && usersData[serviceCol] ? usersData[serviceCol][i] : null,
-                            referentMateriel: refCol && usersData[refCol] ? Boolean(usersData[refCol][i]) : false
+                            label: label,
+                            email: emailVal.toLowerCase(),
+                            nomComplet: nomVal.toLowerCase(),
+                            referentMateriel: usersData.ReferentMateriel ? Boolean(usersData.ReferentMateriel[i]) : false
                         };
                         mapUsers[u.id] = u;
                         listUsers.push(u);
@@ -439,26 +414,24 @@
                 populateUserSelect();
                 tryAutoSelectUser();
 
-                // C. Chargement du catalogue MATERIEL
+                // 2. Chargement du catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
-                    const matCols = mapTableColumns(matData, ['IdMateriel', 'Materiel', 'Categorie', 'Quantite', 'Referent', 'Service']);
                     mapMateriel = {};
                     listMateriel = [];
                     if (matData && matData.id) {
                         for (let i = 0; i < matData.id.length; i++) {
-                            const matName = matData[matCols.Materiel] ? cleanGristValue(matData[matCols.Materiel][i]) : '';
+                            const matName = matData.Materiel ? cleanGristValue(matData.Materiel[i]) : '';
                             if (!matName) continue;
 
                             const item = {
                                 id: matData.id[i],
-                                IdMateriel: matData[matCols.IdMateriel] ? cleanGristValue(matData[matCols.IdMateriel][i]) : '',
+                                IdMateriel: matData.IdMateriel ? cleanGristValue(matData.IdMateriel[i]) : '',
                                 Materiel: matName,
-                                Categorie: matData[matCols.Categorie] ? cleanGristValue(matData[matCols.Categorie][i]) : '',
-                                Quantite: matData[matCols.Quantite] !== undefined && matData[matCols.Quantite][i] !== null ? Number(matData[matCols.Quantite][i]) : 1,
-                                Referent: matData[matCols.Referent] ? Number(matData[matCols.Referent][i]) : null,
-                                Service: matData[matCols.Service] ? matData[matCols.Service][i] : null
+                                Categorie: matData.Categorie ? cleanGristValue(matData.Categorie[i]) : '',
+                                Quantite: matData.Quantite !== undefined && matData.Quantite[i] !== null ? Number(matData.Quantite[i]) : 1,
+                                Referents: extractRefIds(matData.Referent ? matData.Referent[i] : null)
                             };
                             mapMateriel[item.id] = item;
                             listMateriel.push(item);
@@ -469,9 +442,7 @@
 
                 refreshAllViews();
             } catch (err) {
-                console.error("Erreur lors du chargement :", err);
-                const select = document.getElementById('current-user-select');
-                select.innerHTML = `<option value="">⚠️ ${err.message}</option>`;
+                console.error("Erreur chargement :", err);
             }
         }
 
@@ -480,23 +451,27 @@
         function populateUserSelect() {
             const select = document.getElementById('current-user-select');
             select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>';
-            listUsers.sort((a, b) => a.email.localeCompare(b.email)).forEach(u => {
+            listUsers.sort((a, b) => a.label.localeCompare(b.label)).forEach(u => {
                 const opt = document.createElement('option');
                 opt.value = u.id;
-                opt.textContent = u.email;
+                opt.textContent = u.label;
                 select.appendChild(opt);
             });
         }
 
-        // Sélection automatique de l'utilisateur si son email Grist correspond à une ligne de Utilisateurs
         function tryAutoSelectUser() {
-            if (!detectedGristEmail || listUsers.length === 0) return;
+            if (!gristSessionEmail || listUsers.length === 0) return;
 
-            const matchedUser = listUsers.find(u => u.email.trim().toLowerCase() === detectedGristEmail);
+            const matchedUser = listUsers.find(u => {
+                return u.email === gristSessionEmail || 
+                       u.nomComplet === gristSessionEmail || 
+                       u.email.includes(gristSessionEmail) ||
+                       gristSessionEmail.includes(u.email);
+            });
+
             if (matchedUser) {
                 currentUserId = matchedUser.id;
-                const select = document.getElementById('current-user-select');
-                select.value = matchedUser.id;
+                document.getElementById('current-user-select').value = matchedUser.id;
                 document.getElementById('auto-auth-info').style.display = 'block';
                 updateReferentUI();
                 refreshAllViews();
@@ -527,7 +502,7 @@
             if (!currentUserId) return false;
             const userObj = mapUsers[currentUserId];
             const hasFlag = userObj && userObj.referentMateriel === true;
-            const isAssignedToItem = listMateriel.some(m => m.Referent === currentUserId);
+            const isAssignedToItem = listMateriel.some(m => m.Referents.includes(currentUserId));
             return hasFlag || isAssignedToItem;
         }
 
@@ -543,15 +518,12 @@
             document.getElementById('tab-btn-referent').style.display = isRef ? 'inline-block' : 'none';
             document.getElementById('referent-badge').style.display = isRef ? 'inline-block' : 'none';
             document.getElementById('auto-validate-container').style.display = isRef ? 'block' : 'none';
-            if (!isRef) {
-                document.getElementById('auto-validate-check').checked = false;
-            }
+            if (!isRef) document.getElementById('auto-validate-check').checked = false;
         }
 
         window.switchTab = function(tabName, btnElement) {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            
             btnElement.classList.add('active');
             document.getElementById(`tab-${tabName}`).classList.add('active');
         };
@@ -587,30 +559,27 @@
             checkAvailability();
         }
 
-        // Lecture sécurisée d'un champ d'un enregistrement PRET_MATERIEL selon les colonnes détectées
-        function getPretField(record, logicalKey) {
-            const actualCol = pretCols[logicalKey] || logicalKey;
-            return record[actualCol];
-        }
-
         function checkAvailability() {
             const matRowId = Number(document.getElementById('select-materiel').value);
             const qteDemandee = parseInt(document.getElementById('quantite-demande').value) || 1;
-            const debut = document.getElementById('debut-pret').value;
-            const fin = document.getElementById('fin-pret').value;
+            const debutVal = document.getElementById('debut-pret').value;
+            const finVal = document.getElementById('fin-pret').value;
             const banner = document.getElementById('availability-box');
             const submitBtn = document.getElementById('submit-btn');
 
-            if (!matRowId || !debut || !fin) {
+            if (!matRowId || !debutVal || !finVal) {
                 banner.style.display = 'none';
                 submitBtn.disabled = false;
                 return;
             }
 
-            if (debut > fin) {
+            const debutMs = new Date(debutVal).getTime();
+            const finMs = new Date(finVal).getTime();
+
+            if (debutMs >= finMs) {
                 banner.style.display = 'block';
                 banner.className = 'availability-banner avail-ko';
-                banner.textContent = "⚠️ La date de début doit être antérieure ou égale à la date de fin.";
+                banner.textContent = "⚠️ La date et l'heure de début doivent être antérieures à celles de fin.";
                 submitBtn.disabled = true;
                 return;
             }
@@ -622,17 +591,18 @@
 
             let qteDejaPretee = 0;
             recordsPrets.forEach(pret => {
-                const pMat = Number(getPretField(pret, 'Materiel'));
-                const pDebut = getPretField(pret, 'DebutPret');
-                const pFin = getPretField(pret, 'FinPret');
-                const pStatut = getPretField(pret, 'Statut');
-                const pQte = getPretField(pret, 'Quantite');
+                const pMat = Number(pret.Materiel);
+                const pDebutMs = parseGristDateTimeToMs(pret.DebutPret);
+                const pFinMs = parseGristDateTimeToMs(pret.FinPret);
+                const pStatut = cleanGristValue(pret.Statut);
+                const pQte = pret.Quantite;
 
                 if (pMat !== matRowId) return;
-                if (!pDebut || !pFin) return;
+                if (!pDebutMs || !pFinMs) return;
                 if (pStatut === 'Refusé' || pStatut === 'Clôturé') return;
                 
-                if (debut <= pFin && fin >= pDebut) {
+                // Chevauchement des créneaux
+                if (debutMs < pFinMs && finMs > pDebutMs) {
                     qteDejaPretee += (pQte ? Number(pQte) : 1);
                 }
             });
@@ -642,20 +612,19 @@
             banner.style.display = 'block';
             if (qteDisponible === 0) {
                 banner.className = 'availability-banner avail-ko';
-                banner.textContent = `❌ Aucun matériel disponible sur les dates demandées (${itemCatalog.Materiel} : 0/${stockTotal} libre).`;
+                banner.textContent = `❌ Aucun matériel disponible sur ce créneau (${itemCatalog.Materiel} : 0/${stockTotal} libre).`;
                 submitBtn.disabled = true;
             } else if (qteDisponible < qteDemandee) {
                 banner.className = 'availability-banner avail-ko';
-                banner.textContent = `❌ Stock insuffisant sur cette période : seulement ${qteDisponible} exemplaire(s) disponible(s) sur ${stockTotal} (vous en demandez ${qteDemandee}).`;
+                banner.textContent = `❌ Stock insuffisant sur ce créneau : seulement ${qteDisponible} exemplaire(s) disponible(s) sur ${stockTotal} (vous en demandez ${qteDemandee}).`;
                 submitBtn.disabled = true;
             } else {
                 banner.className = 'availability-banner avail-ok';
-                banner.textContent = `✅ Disponible : ${qteDisponible} exemplaire(s) libre(s) sur ${stockTotal} pour cette période.`;
+                banner.textContent = `✅ Disponible : ${qteDisponible} exemplaire(s) libre(s) sur ${stockTotal} pour ce créneau.`;
                 submitBtn.disabled = false;
             }
         }
 
-        // Enregistrement dans PRET_MATERIEL en utilisant les noms techniques exacts des colonnes
         document.getElementById('loan-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const feedback = document.getElementById('form-feedback');
@@ -674,29 +643,26 @@
             const todayStr = new Date().toISOString().split('T')[0];
             const autoValidate = isCurrentUserReferent() && document.getElementById('auto-validate-check').checked;
 
-            // Construction dynamique de l'objet avec les identifiants exacts de colonnes Grist
-            const payload = {};
-            payload[pretCols.Materiel] = matRowId;
-            payload[pretCols.Quantite] = qteDemandee;
-            payload[pretCols.Demandeur] = currentUserId;
-            payload[pretCols.DateDemande] = todayStr;
-            payload[pretCols.DebutPret] = document.getElementById('debut-pret').value;
-            payload[pretCols.FinPret] = document.getElementById('fin-pret').value;
-            payload[pretCols.DetailsDemande] = document.getElementById('details-demande').value.trim();
-            payload[pretCols.Statut] = autoValidate ? 'Validé' : 'En attente';
+            const debutIso = new Date(document.getElementById('debut-pret').value).toISOString();
+            const finIso = new Date(document.getElementById('fin-pret').value).toISOString();
 
-            if (itemCatalog.Referent || isCurrentUserReferent()) {
-                payload[pretCols.Referent] = itemCatalog.Referent || currentUserId;
-            }
-            if (itemCatalog.Service) {
-                payload[pretCols.Service] = itemCatalog.Service;
-            }
+            // Construction du payload correspondant aux colonnes de PRET_MATERIEL
+            const payload = {
+                Materiel: matRowId,
+                Quantite: qteDemandee,
+                Demandeur: currentUserId,
+                DateDemande: todayStr,
+                DebutPret: debutIso,
+                FinPret: finIso,
+                DetailsDemande: document.getElementById('details-demande').value.trim(),
+                Statut: autoValidate ? 'Validé' : 'En attente'
+            };
+
             if (autoValidate) {
-                payload[pretCols.DateValidation] = todayStr;
+                payload.DateValidation = todayStr;
             }
 
             try {
-                // On utilise docApi.applyUserActions ou selectedTable.create sur la table PRET_MATERIEL
                 const pretTableName = await resolveTableName('PRET_MATERIEL');
                 await grist.docApi.applyUserActions([
                     ['AddRecord', pretTableName || 'PRET_MATERIEL', null, payload]
@@ -705,14 +671,14 @@
                 feedback.style.color = 'green';
                 feedback.textContent = autoValidate 
                     ? "✅ Demande enregistrée et validée automatiquement." 
-                    : "✅ Votre demande a bien été enregistrée et transmise au référent.";
+                    : "✅ Votre demande a bien été enregistrée et transmise au(x) référent(s).";
                 
                 document.getElementById('loan-form').reset();
                 document.getElementById('quantite-demande').value = 1;
                 document.getElementById('char-count').textContent = '0';
                 document.getElementById('availability-box').style.display = 'none';
             } catch (err) {
-                console.error("Détail erreur écriture :", err);
+                console.error("Erreur écriture :", err);
                 feedback.style.color = 'red';
                 feedback.textContent = "Erreur lors de l'enregistrement : " + err.message;
             }
@@ -725,8 +691,8 @@
             renderReferentLoans();
         }
 
-        function formatStatusBadge(statut) {
-            const s = statut || 'En attente';
+        function formatStatusBadge(rawStatut) {
+            const s = cleanGristValue(rawStatut) || 'En attente';
             if (s === 'Validé') return `<span class="badge badge-valide">Validé</span>`;
             if (s === 'Refusé') return `<span class="badge badge-refuse">Refusé</span>`;
             return `<span class="badge badge-attente">${s}</span>`;
@@ -739,7 +705,7 @@
                 return;
             }
 
-            const myRecords = recordsPrets.filter(p => Number(getPretField(p, 'Demandeur')) === currentUserId);
+            const myRecords = recordsPrets.filter(p => Number(p.Demandeur) === currentUserId);
             if (myRecords.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="8">Aucune demande enregistrée à votre nom.</td></tr>';
                 return;
@@ -747,19 +713,21 @@
 
             tbody.innerHTML = '';
             myRecords.forEach(p => {
-                const matId = Number(getPretField(p, 'Materiel'));
+                const matId = Number(p.Materiel);
                 const matObj = mapMateriel[matId] || {};
-                const refId = Number(getPretField(p, 'Referent')) || matObj.Referent;
-                const refEmail = refId && mapUsers[refId] ? mapUsers[refId].email : '-';
-                const obsVal = getPretField(p, 'ObservationRetourDemandeur') || '';
+                
+                const refIds = matObj.Referents;
+                const refNames = refIds.map(id => mapUsers[id] ? mapUsers[id].label : '').filter(Boolean).join(', ') || '-';
+                
+                const obsVal = p.ObservationRetourDemandeur || '';
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${matObj.IdMateriel || '-'}</td>
                     <td><strong>${matObj.Materiel || 'Matériel inconnu'}</strong></td>
-                    <td>${getPretField(p, 'Quantite') || 1}</td>
-                    <td>Du ${getPretField(p, 'DebutPret') || '?'} au ${getPretField(p, 'FinPret') || '?'}</td>
-                    <td>${refEmail}</td>
-                    <td>${formatStatusBadge(getPretField(p, 'Statut'))}</td>
+                    <td>${p.Quantite || 1}</td>
+                    <td>Du ${formatDateTimeFr(p.DebutPret)}<br>au ${formatDateTimeFr(p.FinPret)}</td>
+                    <td>${refNames}</td>
+                    <td>${formatStatusBadge(p.Statut)}</td>
                     <td>
                         <input type="text" id="obs-dem-${p.id}" value="${String(obsVal).replace(/"/g, '&quot;')}" placeholder="État au retour...">
                     </td>
@@ -776,12 +744,11 @@
             if (!currentUserId) return;
 
             const refRecords = recordsPrets.filter(p => {
-                const matId = Number(getPretField(p, 'Materiel'));
+                const matId = Number(p.Materiel);
                 const matObj = mapMateriel[matId];
-                const isItemRef = matObj && matObj.Referent === currentUserId;
-                const isExplicitRef = Number(getPretField(p, 'Referent')) === currentUserId;
-                const isSelfRequestAsRef = Number(getPretField(p, 'Demandeur')) === currentUserId && isCurrentUserReferent();
-                return isItemRef || isExplicitRef || isSelfRequestAsRef;
+                const isItemRef = matObj && matObj.Referents.includes(currentUserId);
+                const isSelfRequestAsRef = Number(p.Demandeur) === currentUserId && isCurrentUserReferent();
+                return isItemRef || isSelfRequestAsRef;
             });
 
             if (refRecords.length === 0) {
@@ -791,19 +758,19 @@
 
             tbody.innerHTML = '';
             refRecords.forEach(p => {
-                const matId = Number(getPretField(p, 'Materiel'));
+                const matId = Number(p.Materiel);
                 const matObj = mapMateriel[matId] || {};
-                const demId = Number(getPretField(p, 'Demandeur'));
-                const demEmail = mapUsers[demId] ? mapUsers[demId].email : `Agent #${demId}`;
-                const obsPret = getPretField(p, 'ObservationRetourPreteur') || '';
+                const demId = Number(p.Demandeur);
+                const demLabel = mapUsers[demId] ? mapUsers[demId].label : `Agent #${demId}`;
+                const obsPret = p.ObservationRetourPreteur || '';
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td>${demEmail}</td>
+                    <td>${demLabel}</td>
                     <td><strong>${matObj.Materiel || ''}</strong> (${matObj.IdMateriel || ''})</td>
-                    <td>${getPretField(p, 'Quantite') || 1}</td>
-                    <td>Du ${getPretField(p, 'DebutPret') || '?'} au ${getPretField(p, 'FinPret') || '?'}</td>
-                    <td>${getPretField(p, 'DetailsDemande') || ''}</td>
-                    <td>${formatStatusBadge(getPretField(p, 'Statut'))}</td>
+                    <td>${p.Quantite || 1}</td>
+                    <td>Du ${formatDateTimeFr(p.DebutPret)}<br>au ${formatDateTimeFr(p.FinPret)}</td>
+                    <td>${p.DetailsDemande || ''}</td>
+                    <td>${formatStatusBadge(p.Statut)}</td>
                     <td>
                         <input type="text" id="obs-pret-${p.id}" value="${String(obsPret).replace(/"/g, '&quot;')}" placeholder="Contrôle retour...">
                         <button type="button" class="btn-sm" style="margin-top:4px;" onclick="savePreteurObs(${p.id})">Noter</button>
@@ -817,16 +784,15 @@
             });
         }
 
-        // Actions de mise à jour dans PRET_MATERIEL
         window.decideLoan = async function(rowId, decision) {
             const todayStr = new Date().toISOString().split('T')[0];
             const pretTableName = await resolveTableName('PRET_MATERIEL');
-            const fields = {};
-            fields[pretCols.Statut] = decision;
-            fields[pretCols.DateValidation] = todayStr;
             try {
                 await grist.docApi.applyUserActions([
-                    ['UpdateRecord', pretTableName || 'PRET_MATERIEL', rowId, fields]
+                    ['UpdateRecord', pretTableName || 'PRET_MATERIEL', rowId, {
+                        Statut: decision,
+                        DateValidation: todayStr
+                    }]
                 ]);
             } catch (err) {
                 alert("Erreur lors de la validation : " + err.message);
@@ -836,11 +802,11 @@
         window.saveDemandeurObs = async function(rowId) {
             const val = document.getElementById(`obs-dem-${rowId}`).value;
             const pretTableName = await resolveTableName('PRET_MATERIEL');
-            const fields = {};
-            fields[pretCols.ObservationRetourDemandeur] = val;
             try {
                 await grist.docApi.applyUserActions([
-                    ['UpdateRecord', pretTableName || 'PRET_MATERIEL', rowId, fields]
+                    ['UpdateRecord', pretTableName || 'PRET_MATERIEL', rowId, {
+                        ObservationRetourDemandeur: val
+                    }]
                 ]);
                 alert("Observation enregistrée.");
             } catch (err) {
@@ -851,11 +817,11 @@
         window.savePreteurObs = async function(rowId) {
             const val = document.getElementById(`obs-pret-${rowId}`).value;
             const pretTableName = await resolveTableName('PRET_MATERIEL');
-            const fields = {};
-            fields[pretCols.ObservationRetourPreteur] = val;
             try {
                 await grist.docApi.applyUserActions([
-                    ['UpdateRecord', pretTableName || 'PRET_MATERIEL', rowId, fields]
+                    ['UpdateRecord', pretTableName || 'PRET_MATERIEL', rowId, {
+                        ObservationRetourPreteur: val
+                    }]
                 ]);
                 alert("Observation prêteur enregistrée.");
             } catch (err) {
