@@ -189,7 +189,7 @@
         <div class="user-selector">
             <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent :</label>
             <select id="current-user-select">
-                <option value="">-- Chargement... --</option>
+                <option value="">-- Chargement des agents... --</option>
             </select>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
@@ -316,20 +316,6 @@
 
         grist.ready({ requiredAccess: 'full' });
 
-        // Si le widget est lié à une table ou ligne active (comme les cartes ICOM)
-        grist.onRecord(function(record) {
-            if (record && record.id) {
-                // Si la ligne sélectionnée vient de la table Utilisateurs
-                if (mapUsers[record.id] || record.NomComplet || record.Email) {
-                    currentUserId = record.id;
-                    const select = document.getElementById('current-user-select');
-                    if (select) select.value = record.id;
-                    updateReferentUI();
-                    refreshAllViews();
-                }
-            }
-        });
-
         grist.onRecords(function(records) {
             recordsPrets = records || [];
             refreshAllViews();
@@ -372,8 +358,13 @@
         }
 
         async function resolveTableName(targetName) {
-            const tables = await grist.docApi.listTables();
-            return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
+            try {
+                const tables = await grist.docApi.listTables();
+                return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
+            } catch (e) {
+                console.error("Erreur listTables :", e);
+                return null;
+            }
         }
 
         async function initApp() {
@@ -403,7 +394,7 @@
                     populateUserSelect();
                 }
 
-                // 2. Chargement du catalogue MATERIEL
+                // 2. Chargement du catalogue MATERIEL (isolé avec try/catch spécifique)
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
@@ -428,6 +419,8 @@
                     }
                     populateCategoriesFromMateriel();
                     populateMaterielSelect();
+                } else {
+                    console.warn("Table MATERIEL introuvable dans le document.");
                 }
 
                 // Restauration de l'agent si mémorisé
@@ -437,7 +430,6 @@
                     currentUserId = Number(savedId);
                     updateReferentUI();
                 } else if (listUsers.length > 0) {
-                    // Sélection par défaut du premier pour débloquer immédiatement
                     document.getElementById('current-user-select').value = listUsers[0].id;
                     currentUserId = listUsers[0].id;
                     updateReferentUI();
@@ -445,7 +437,7 @@
 
                 refreshAllViews();
             } catch (err) {
-                console.error("Erreur initialisation :", err);
+                console.error("Erreur critique dans initApp :", err);
             }
         }
 
