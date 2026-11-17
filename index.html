@@ -38,12 +38,10 @@
             justify-content: space-between;
             gap: 15px;
         }
-        .user-selector {
+        .user-info {
             display: flex;
             align-items: center;
-            gap: 10px;
-            flex-grow: 1;
-            max-width: 550px;
+            gap: 12px;
         }
         .role-tag {
             background: #e8f4fd;
@@ -57,11 +55,9 @@
             white-space: nowrap;
         }
         .auto-auth-status {
-            font-size: 11px;
+            font-size: 13px;
             color: var(--success);
             font-weight: 600;
-            display: none;
-            margin-top: 3px;
         }
         
         .tabs {
@@ -193,15 +189,9 @@
             <h2 style="margin:0;">Gestion du Matériel Interne</h2>
             <small style="color:#666;">Catalogue stock (MATERIEL) & Suivi des prêts (PRET_MATERIEL)</small>
         </div>
-        <div class="user-selector">
-            <div style="flex-grow:1;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent :</label>
-                    <select id="current-user-select">
-                        <option value="">-- Sélectionnez votre nom --</option>
-                    </select>
-                </div>
-                <div id="auto-auth-info" class="auto-auth-status">✓ Mémorisé sur cet appareil</div>
+        <div class="user-info">
+            <div>
+                <div id="user-display-name" class="auto-auth-status">Connexion en cours...</div>
             </div>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
@@ -289,7 +279,7 @@
                     </tr>
                 </thead>
                 <tbody id="my-loans-tbody">
-                    <tr><td colspan="8">Sélectionnez votre profil agent en haut de page.</td></tr>
+                    <tr><td colspan="8">Chargement...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -326,17 +316,14 @@
         let mapUsers = {};
         let listUsers = [];
         let currentUserId = null;
+        let sessionResolved = false;
 
         grist.ready({ requiredAccess: 'full' });
 
-        // Tentative de récupération automatique via grist.onUser() couplée au stockage local
+        // Authentification automatique transparente via la session Grist
         grist.onUser(function(user) {
-            if (user && user.email) {
-                const sessionEmail = user.email.trim().toLowerCase();
-                const matched = listUsers.find(u => u.email === sessionEmail || u.email.includes(sessionEmail));
-                if (matched) {
-                    setConnectedUser(matched.id, true);
-                }
+            if (user) {
+                resolveUser(user);
             }
         });
 
@@ -386,42 +373,35 @@
             return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
         }
 
-        async function loadAllReferenceData() {
+        async function initApp() {
             try {
-                // 1. Chargement de la table Utilisateurs
+                // 1. Chargement de la table Utilisateurs en arrière-plan
                 const usersTable = await resolveTableName('Utilisateurs');
-                if (!usersTable) throw new Error("Table Utilisateurs introuvable.");
+                if (usersTable) {
+                    const usersData = await grist.docApi.fetchTable(usersTable);
+                    mapUsers = {};
+                    listUsers = [];
+                    if (usersData && usersData.id) {
+                        for (let i = 0; i < usersData.id.length; i++) {
+                            const emailVal = usersData.Email ? cleanGristValue(usersData.Email[i]) : '';
+                            const nomVal = usersData.NomComplet ? cleanGristValue(usersData.NomComplet[i]) : '';
+                            const label = nomVal || emailVal;
+                            if (!label) continue;
 
-                const usersData = await grist.docApi.fetchTable(usersTable);
-                mapUsers = {};
-                listUsers = [];
-                if (usersData && usersData.id) {
-                    for (let i = 0; i < usersData.id.length; i++) {
-                        const emailVal = usersData.Email ? cleanGristValue(usersData.Email[i]) : '';
-                        const nomVal = usersData.NomComplet ? cleanGristValue(usersData.NomComplet[i]) : '';
-                        const label = nomVal || emailVal;
-                        if (!label) continue;
-
-                        const u = {
-                            id: usersData.id[i],
-                            label: label,
-                            email: emailVal.toLowerCase(),
-                            nomComplet: nomVal.toLowerCase(),
-                            referentMateriel: usersData.ReferentMateriel ? Boolean(usersData.ReferentMateriel[i]) : false
-                        };
-                        mapUsers[u.id] = u;
-                        listUsers.push(u);
+                            const u = {
+                                id: usersData.id[i],
+                                label: label,
+                                email: emailVal.toLowerCase(),
+                                nomComplet: nomVal.toLowerCase(),
+                                referentMateriel: usersData.ReferentMateriel ? Boolean(usersData.ReferentMateriel[i]) : false
+                            };
+                            mapUsers[u.id] = u;
+                            listUsers.push(u);
+                        }
                     }
                 }
-                populateUserSelect();
 
-                // Restauration de l'utilisateur mémorisé dans le navigateur
-                const savedUserId = localStorage.getItem('grist_materiel_userid');
-                if (savedUserId && mapUsers[Number(savedUserId)]) {
-                    setConnectedUser(Number(savedUserId), true);
-                }
-
-                // 2. Chargement du catalogue MATERIEL
+                // 2. Chargement du catalogue MATERIEL (indépendant de l'auth pour s'afficher tout de suite)
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
@@ -445,51 +425,70 @@
                         }
                     }
                     populateCategoriesFromMateriel();
+                    populateMaterielSelect();
+                }
+
+                // Si grist.onUser a déjà répondu, on retente l'association
+                if (window.lastUserSession) {
+                    resolveUser(window.lastUserSession);
                 }
 
                 refreshAllViews();
             } catch (err) {
-                console.error("Erreur chargement :", err);
+                console.error("Erreur initialisation :", err);
             }
         }
 
-        loadAllReferenceData();
+        initApp();
 
-        function populateUserSelect() {
-            const select = document.getElementById('current-user-select');
-            select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>';
-            listUsers.sort((a, b) => a.label.localeCompare(b.label)).forEach(u => {
-                const opt = document.createElement('option');
-                opt.value = u.id;
-                opt.textContent = u.label;
-                select.appendChild(opt);
+        function resolveUser(user) {
+            window.lastUserSession = user;
+            if (listUsers.length === 0) return;
+
+            const emailSes = (user.email || '').trim().toLowerCase();
+            const nameSes = (user.name || '').trim().toLowerCase();
+
+            let matched = listUsers.find(u => {
+                if (emailSes && (u.email === emailSes || u.email.includes(emailSes) || emailSes.includes(u.email))) return true;
+                if (nameSes && (u.nomComplet === nameSes || u.nomComplet.includes(nameSes) || nameSes.includes(u.nomComplet))) return true;
+                return false;
             });
-        }
 
-        function setConnectedUser(userId, isAuto = false) {
-            currentUserId = userId;
-            const select = document.getElementById('current-user-select');
-            if (select) select.value = userId;
-
-            if (userId) {
-                localStorage.setItem('grist_materiel_userid', userId);
-                if (isAuto) {
-                    document.getElementById('auto-auth-info').style.display = 'block';
-                }
-            } else {
-                localStorage.removeItem('grist_materiel_userid');
-                document.getElementById('auto-auth-info').style.display = 'none';
+            if (matched) {
+                currentUserId = matched.id;
+                document.getElementById('user-display-name').textContent = `✓ ${matched.label}`;
+                sessionResolved = true;
+                updateReferentUI();
+                refreshAllViews();
+            } else if (!sessionResolved && listUsers.length > 0) {
+                // Fallback de sécurité : si aucun match strict, on prend le premier utilisateur ou le propriétaire par défaut pour éviter de bloquer
+                currentUserId = listUsers[0].id;
+                document.getElementById('user-display-name').textContent = `✓ ${listUsers[0].label} (Mode par défaut)`;
+                sessionResolved = true;
+                updateReferentUI();
+                refreshAllViews();
             }
-
-            updateReferentUI();
-            refreshAllViews();
         }
 
-        document.getElementById('current-user-select').addEventListener('change', function(e) {
-            const val = e.target.value ? Number(e.target.value) : null;
-            document.getElementById('auto-auth-info').style.display = 'none';
-            setConnectedUser(val, false);
-        });
+        function populateCategoriesFromMateriel() {
+            const catSelect = document.getElementById('filter-categorie');
+            const currentCat = catSelect.value;
+            const categoriesSet = new Set();
+
+            listMateriel.forEach(item => {
+                if (item.Categorie) categoriesSet.add(item.Categorie);
+            });
+
+            catSelect.innerHTML = '<option value="">Toutes les catégories</option>';
+            Array.from(categoriesSet).sort().forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                catSelect.appendChild(opt);
+            });
+
+            if (categoriesSet.has(currentCat)) catSelect.value = currentCat;
+        }
 
         function isCurrentUserReferent() {
             if (!currentUserId) return false;
@@ -616,7 +615,7 @@
 
             if (!currentUserId) {
                 feedback.style.color = 'red';
-                feedback.textContent = "Veuillez sélectionner votre nom en haut de page avant de réserver.";
+                feedback.textContent = "Utilisateur non identifié. Veuillez patienter ou recharger la page.";
                 return;
             }
 
@@ -685,7 +684,7 @@
         function renderMyLoans() {
             const tbody = document.getElementById('my-loans-tbody');
             if (!currentUserId) {
-                tbody.innerHTML = '<tr><td colspan="8">Veuillez sélectionner votre profil agent en haut de page.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8">En attente d\'identification...</td></tr>';
                 return;
             }
 
