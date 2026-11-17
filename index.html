@@ -334,21 +334,21 @@ async function envoyerDemande() {
 
     // Ne jamais transmettre Demandeur, EmailCreateur,
     // ReferentMateriel ou Statut depuis le navigateur.
-    await grist.docApi.applyUserActions([
-      [
-        "AddRecord",
-        TABLE_PRET,
-        null,
-        {
-          Materiel: id,
-  Quantite: q,
-  DebutPret: debut,
-  FinPret: fin,
-  DetailsDemande: details,
-  Statut: "En attente"
-        }
-      ]
-    ]);
+await grist.docApi.applyUserActions([
+  [
+    "AddRecord",
+    TABLE_PRET,
+    null,
+    {
+      Materiel: id,
+      Quantite: q,
+      DebutPret: debut,
+      FinPret: fin,
+      DetailsDemande: details,
+      Statut: "En attente"
+    }
+  ]
+]);
 
     message.className = "ok";
     message.textContent =
