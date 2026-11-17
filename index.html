@@ -179,4 +179,281 @@
         let currentUserId = null;
         let isReferent = false;
         let listMateriel = [];
-        let mapMateriel =
+        let mapMateriel = {};
+        let recordsPrets = [];
+        let mapUsers = {};
+
+        grist.ready({ requiredAccess: 'full' });
+
+        // Écoute de la table PRET_MATERIEL en temps réel
+        grist.onRecords(function(records) {
+            recordsPrets = records || [];
+            renderViews();
+        });
+
+        async function resolveTableName(targetName) {
+            const tables = await grist.docApi.listTables();
+            return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
+        }
+
+        async function initApp() {
+            try {
+                // 1. Récupération de l'e-mail de l'utilisateur connecté via l'API Grist
+                let sessionEmail = "";
+                try {
+                    const user = await grist.user;
+                    if (user && user.email) {
+                        sessionEmail = user.email.trim().toLowerCase();
+                    }
+                } catch(e) {
+                    console.warn("Impossible de récupérer grist.user directement :", e);
+                }
+
+                // 2. Charger la table des utilisateurs pour faire correspondre l'e-mail de session
+                const userTable = await resolveTableName('Utilisateurs');
+                if (userTable) {
+                    const userData = await grist.docApi.fetchTable(userTable);
+                    mapUsers = {};
+                    
+                    if (userData && userData.id) {
+                        for (let i = 0; i < userData.id.length; i++) {
+                            const id = userData.id[i];
+                            const email = userData.Email ? String(userData.Email[i]).trim().toLowerCase() : '';
+                            const nom = userData.NomComplet ? String(userData.NomComplet[i]) : (userData.Nom ? String(userData.Nom[i]) : email);
+                            const ref = userData.ReferentMateriel ? Boolean(userData.ReferentMateriel[i]) : false;
+
+                            mapUsers[id] = { nom, email, ref };
+
+                            // Appariement strict par e-mail
+                            if (sessionEmail && email === sessionEmail) {
+                                currentUserId = id;
+                                isReferent = ref;
+                            }
+                        }
+                    }
+                }
+
+                // Si l'e-mail de session n'a pas pu être capturé (mode test ou restrictions), 
+                // on vérifie si la table ne contient qu'une seule ligne (filtrée par les règles d'accès Grist)
+                if (!currentUserId && Object.keys(mapUsers).length === 1) {
+                    const singleId = Object.keys(mapUsers)[0];
+                    currentUserId = Number(singleId);
+                    isReferent = mapUsers[currentUserId].ref;
+                }
+
+                if (currentUserId && mapUsers[currentUserId]) {
+                    const agentName = mapUsers[currentUserId].nom;
+                    document.getElementById('user-display').textContent = `✅ Connecté : ${agentName}`;
+                    document.getElementById('submit-btn').disabled = false;
+                    
+                    const badge = document.getElementById('referent-badge');
+                    const tabRef = document.getElementById('tab-btn-referent');
+                    if (isReferent) {
+                        badge.style.display = 'inline-block';
+                        tabRef.style.display = 'inline-block';
+                    }
+                } else {
+                    document.getElementById('user-display').textContent = "⚠️ Agent non reconnu.";
+                    document.getElementById('global-alert').style.display = 'block';
+                    document.getElementById('global-alert').textContent = `Votre e-mail de session (${sessionEmail || 'inconnu'}) ne correspond à aucun profil dans la table Utilisateurs, ou les règles d'accès restreignent l'accès.`;
+                }
+
+                // 3. Charger le catalogue MATERIEL
+                const matTable = await resolveTableName('MATERIEL');
+                if (matTable) {
+                    const matData = await grist.docApi.fetchTable(matTable);
+                    listMateriel = [];
+                    mapMateriel = {};
+                    if (matData && matData.id) {
+                        for (let i = 0; i < matData.id.length; i++) {
+                            const item = {
+                                id: matData.id[i],
+                                nom: matData.Materiel ? String(matData.Materiel[i]) : '',
+                                categorie: matData.Categorie ? String(matData.Categorie[i]) : '',
+                                quantite: matData.Quantite ? Number(matData.Quantite[i]) : 1
+                            };
+                            mapMateriel[item.id] = item;
+                            listMateriel.push(item);
+                        }
+                    }
+                    populateCategories();
+                    populateMaterielSelect();
+                }
+                renderViews();
+            } catch (e) {
+                console.error("Erreur d'initialisation :", e);
+            }
+        }
+
+        initApp();
+
+        function populateCategories() {
+            const catSelect = document.getElementById('filter-categorie');
+            const categoriesSet = new Set();
+            listMateriel.forEach(m => { if (m.categorie) categoriesSet.add(m.categorie); });
+            
+            catSelect.innerHTML = '<option value="">Toutes les catégories</option>';
+            Array.from(categoriesSet).sort().forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                catSelect.appendChild(opt);
+            });
+        }
+
+        function populateMaterielSelect() {
+            const catFilter = document.getElementById('filter-categorie').value;
+            const select = document.getElementById('select-materiel');
+            select.innerHTML = '<option value="">-- Sélectionnez un équipement --</option>';
+            
+            listMateriel.forEach(m => {
+                if (!catFilter || m.categorie === catFilter) {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.textContent = `${m.nom} (Stock : ${m.quantite})`;
+                    select.appendChild(opt);
+                }
+            });
+            checkAvailability();
+        }
+
+        document.getElementById('filter-categorie').addEventListener('change', populateMaterielSelect);
+        document.getElementById('select-materiel').addEventListener('change', checkAvailability);
+        document.getElementById('quantite-demande').addEventListener('input', checkAvailability);
+        document.getElementById('debut-pret').addEventListener('change', checkAvailability);
+        document.getElementById('fin-pret').addEventListener('change', checkAvailability);
+
+        function checkAvailability() {
+            const matId = Number(document.getElementById('select-materiel').value);
+            const qteDemandee = parseInt(document.getElementById('quantite-demande').value) || 1;
+            const debutVal = document.getElementById('debut-pret').value;
+            const finVal = document.getElementById('fin-pret').value;
+            const banner = document.getElementById('availability-box');
+            const submitBtn = document.getElementById('submit-btn');
+
+            if (!matId || !debutVal || !finVal || !currentUserId) {
+                banner.style.display = 'none';
+                return;
+            }
+
+            const debutMs = new Date(debutVal).getTime();
+            const finMs = new Date(finVal).getTime();
+
+            if (debutMs >= finMs) {
+                banner.style.display = 'block';
+                banner.className = 'availability-banner avail-ko';
+                banner.textContent = "⚠️ La date de début doit être antérieure à la date de fin.";
+                submitBtn.disabled = true;
+                return;
+            }
+
+            const item = mapMateriel[matId];
+            if (!item) return;
+
+            let qteDejaPretee = 0;
+            recordsPrets.forEach(p => {
+                if (Number(p.Materiel) !== matId) return;
+                const statut = String(p.Statut || 'En attente');
+                if (statut === 'Refusé' || statut === 'Clôturé') return;
+
+                const pDebut = p.DebutPret ? new Date(p.DebutPret).getTime() : null;
+                const pFin = p.FinPret ? new Date(p.FinPret).getTime() : null;
+                if (!pDebut || !pFin) return;
+
+                if (debutMs < pFin && finMs > pDebut) {
+                    qteDejaPretee += (Number(p.Quantite) || 1);
+                }
+            });
+
+            const disponible = Math.max(0, item.quantite - qteDejaPretee);
+
+            banner.style.display = 'block';
+            if (disponible === 0) {
+                banner.className = 'availability-banner avail-ko';
+                banner.textContent = `❌ Aucun exemplaire disponible sur ce créneau (0 / ${item.quantite} libre).`;
+                submitBtn.disabled = true;
+            } else if (disponible < qteDemandee) {
+                banner.className = 'availability-banner avail-ko';
+                banner.textContent = `❌ Stock insuffisant : seulement ${disponible} exemplaire(s) disponible(s).`;
+                submitBtn.disabled = true;
+            } else {
+                banner.className = 'availability-banner avail-ok';
+                banner.textContent = `✅ Matériel disponible : ${disponible} exemplaire(s) libre(s) sur ${item.quantite}.`;
+                submitBtn.disabled = false;
+            }
+        }
+
+        window.switchTab = function(tabName, btn) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        };
+
+        document.getElementById('loan-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            if (!currentUserId) { alert("Agent non identifié."); return; }
+
+            const payload = {
+                Materiel: Number(document.getElementById('select-materiel').value),
+                Quantite: Number(document.getElementById('quantite-demande').value),
+                Demandeur: currentUserId,
+                DateDemande: new Date().toISOString().split('T')[0],
+                DebutPret: new Date(document.getElementById('debut-pret').value).toISOString(),
+                FinPret: new Date(document.getElementById('fin-pret').value).toISOString(),
+                DetailsDemande: document.getElementById('details-demande').value,
+                Statut: 'En attente'
+            };
+
+            try {
+                const pretTable = await resolveTableName('PRET_MATERIEL');
+                await grist.docApi.applyUserActions([['AddRecord', pretTable || 'PRET_MATERIEL', null, payload]]);
+                document.getElementById('form-feedback').style.color = 'green';
+                document.getElementById('form-feedback').textContent = "Demande envoyée avec succès !";
+                this.reset();
+                document.getElementById('availability-box').style.display = 'none';
+            } catch (err) {
+                document.getElementById('form-feedback').style.color = 'red';
+                document.getElementById('form-feedback').textContent = "Erreur : " + err.message;
+            }
+        });
+
+        function renderViews() {
+            renderMyLoans();
+            renderReferentLoans();
+        }
+
+        function renderMyLoans() {
+            const tbody = document.getElementById('my-loans-tbody');
+            if (!currentUserId) { tbody.innerHTML = '<tr><td colspan="4">En attente de l\'agent...</td></tr>'; return; }
+            const mine = recordsPrets.filter(p => Number(p.Demandeur) === Number(currentUserId));
+            if (mine.length === 0) { tbody.innerHTML = '<tr><td colspan="4">Aucune demande enregistrée à votre nom.</td></tr>'; return; }
+
+            tbody.innerHTML = '';
+            mine.forEach(p => {
+                const mat = mapMateriel[Number(p.Materiel)] || {};
+                tbody.innerHTML += `<tr><td>${mat.nom || 'Matériel'}</td><td>${p.Quantite}</td><td>${new Date(p.DebutPret).toLocaleString()}</td><td><span class="badge badge-attente">${p.Statut || 'En attente'}</span></td></tr>`;
+            });
+        }
+
+        function renderReferentLoans() {
+            const tbody = document.getElementById('referent-loans-tbody');
+            if (!isReferent) return;
+            const toValidate = recordsPrets.filter(p => p.Statut === 'En attente');
+            if (toValidate.length === 0) { tbody.innerHTML = '<tr><td colspan="5">Aucune demande en attente.</td></tr>'; return; }
+
+            tbody.innerHTML = '';
+            toValidate.forEach(p => {
+                const mat = mapMateriel[Number(p.Materiel)] || {};
+                const dem = mapUsers[p.Demandeur] ? mapUsers[p.Demandeur].nom : `Agent #${p.Demandeur}`;
+                tbody.innerHTML += `<tr><td>${dem}</td><td>${mat.nom || ''}</td><td>${p.Quantite}</td><td>${new Date(p.DebutPret).toLocaleDateString()}</td><td><button onclick="validerPret(${p.id}, 'Validé')">Valider</button></td></tr>`;
+            });
+        }
+
+        window.validerPret = async function(id, statut) {
+            const pretTable = await resolveTableName('PRET_MATERIEL');
+            await grist.docApi.applyUserActions([['UpdateRecord', pretTable || 'PRET_MATERIEL', id, { Statut: statut }]]);
+        };
+    </script>
+</body>
+</html>
