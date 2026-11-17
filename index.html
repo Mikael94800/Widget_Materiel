@@ -1,434 +1,472 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Gestion Matériel - ICOM Lié</title>
-    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-    <style>
-        :root {
-            --primary: #1f4e78;
-            --success: #27ae60;
-            --warning: #e67e22;
-            --danger: #c0392b;
-            --bg: #f4f6f9;
-            --card-bg: #ffffff;
-            --border: #dce1e7;
-            --text: #2c3e50;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            margin: 0;
-            padding: 16px;
-            background-color: var(--bg);
-            color: var(--text);
-            font-size: 14px;
-        }
-        h2, h3 { color: var(--primary); margin-top: 0; }
-        .top-bar {
-            background: var(--card-bg);
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .user-info { font-weight: bold; color: var(--primary); display: flex; align-items: center; gap: 10px; }
-        .role-tag {
-            background: #e8f4fd;
-            color: var(--primary);
-            border: 1px solid #b6d4fe;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 12px;
-            display: none;
-        }
-        .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 8px; }
-        .tab-btn { background: transparent; color: var(--text); border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-        .tab-btn.active { background: var(--primary); color: white; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .card { background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; }
-        .form-group { display: flex; flex-direction: column; }
-        .form-group.full-width { grid-column: 1 / -1; }
-        label { font-weight: 600; margin-bottom: 5px; font-size: 13px; }
-        select, input, textarea { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 14px; width: 100%; box-sizing: border-box; }
-        button { background-color: var(--primary); color: white; border: none; padding: 10px 18px; border-radius: 4px; cursor: pointer; font-weight: 600; margin-top: 15px; }
-        button:hover { background-color: #163856; }
-        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; min-width: 600px; }
-        th, td { border: 1px solid var(--border); padding: 10px; text-align: left; font-size: 13px; }
-        th { background-color: #f8f9fa; }
-        .badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
-        .badge-attente { background-color: var(--warning); }
-        .badge-valide { background-color: var(--success); }
-        .badge-refuse { background-color: var(--danger); }
-        .availability-banner { padding: 10px; border-radius: 6px; margin-top: 10px; font-weight: bold; display: none; font-size: 13px; }
-        .avail-ok { background: #e8f8f5; color: #1e8449; border: 1px solid #a3e4d7; }
-        .avail-ko { background: #fdedec; color: #922b21; border: 1px solid #f5b7b1; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gestion des prêts de matériel</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+
+<style>
+:root {
+  --blue: #3459dc;
+  --bg: #f5f7fb;
+  --border: #dce2ec;
+  --text: #26334a;
+  --green: #16865a;
+  --red: #c43d43;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 22px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, sans-serif;
+}
+h2 { margin: 0 0 18px; font-size: 21px; }
+h3 { font-size: 16px; margin: 0 0 14px; }
+.panel {
+  background: white;
+  padding: 20px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 13px;
+}
+label { font-size: 13px; font-weight: bold; }
+input, select, textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 11px;
+  font: inherit;
+  background: white;
+}
+textarea { min-height: 75px; resize: vertical; }
+button {
+  border: 0;
+  border-radius: 7px;
+  padding: 11px 15px;
+  cursor: pointer;
+  font-weight: bold;
+}
+button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.primary { background: var(--blue); color: white; }
+.success { background: #d8f3e5; color: #126b47; }
+.danger { background: #fde3e3; color: #a72b35; }
+.info {
+  padding: 12px;
+  border-radius: 8px;
+  background: #edf2ff;
+  margin: 10px 0;
+  font-size: 14px;
+}
+.error {
+  padding: 12px;
+  border-radius: 8px;
+  background: #fde8e8;
+  color: #a72b35;
+  margin: 10px 0;
+}
+.ok {
+  padding: 12px;
+  border-radius: 8px;
+  background: #e2f5eb;
+  color: #126b47;
+  margin: 10px 0;
+}
+.small { font-size: 12px; color: #68758a; }
+.request {
+  border: 1px solid var(--border);
+  padding: 13px;
+  border-radius: 8px;
+  margin: 10px 0;
+  background: white;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+@media(max-width:600px) {
+  body { padding: 12px; }
+  .grid { grid-template-columns: 1fr; gap: 0; }
+}
+</style>
 </head>
+
 <body>
 
-    <div class="top-bar">
-        <div>
-            <h2 style="margin:0;">Gestion du Matériel Interne</h2>
-            <small style="color:#666;">Authentification via mini-vue liée</small>
-        </div>
-        <div class="user-info">
-            <span id="user-display">🔒 En attente de la mini-vue...</span>
-            <span id="referent-badge" class="role-tag">Référent Matériel</span>
-        </div>
+<h2>Gestion des prêts de matériel</h2>
+
+<div class="panel">
+  <h3>Nouvelle demande de prêt</h3>
+
+  <div class="field">
+    <label for="materiel">Matériel souhaité</label>
+    <select id="materiel">
+      <option value="">Chargement du catalogue...</option>
+    </select>
+  </div>
+
+  <div class="grid">
+    <div class="field">
+      <label for="quantite">Quantité demandée</label>
+      <input id="quantite" type="number" min="1" step="1" value="1">
     </div>
-
-    <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('demande', this)">1. Nouvelle Demande</button>
-        <button class="tab-btn" onclick="switchTab('mes-prets', this)">2. Mes Demandes</button>
-        <button class="tab-btn" id="tab-btn-referent" style="display:none;" onclick="switchTab('referent', this)">3. Espace Référent</button>
+    <div class="field">
+      <label for="debut">Début du prêt</label>
+      <input id="debut" type="datetime-local">
     </div>
-
-    <!-- ONGLET 1 : DEMANDE -->
-    <div id="tab-demande" class="tab-content active">
-        <div class="card">
-            <h3>Réserver du matériel</h3>
-            <form id="loan-form">
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="filter-categorie">Filtrer par catégorie :</label>
-                        <select id="filter-categorie">
-                            <option value="">Toutes les catégories</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="select-materiel">Matériel :</label>
-                        <select id="select-materiel" required>
-                            <option value="">-- Sélectionnez un équipement --</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="quantite-demande">Quantité :</label>
-                        <input type="number" id="quantite-demande" min="1" value="1" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="debut-pret">Début :</label>
-                        <input type="datetime-local" id="debut-pret" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="fin-pret">Fin :</label>
-                        <input type="datetime-local" id="fin-pret" required>
-                    </div>
-                    <div class="form-group full-width">
-                        <label for="details-demande">Contexte / Détails :</label>
-                        <textarea id="details-demande" placeholder="Précisez l'événement..." required></textarea>
-                    </div>
-                </div>
-                <div id="availability-box" class="availability-banner"></div>
-                <button type="submit" id="submit-btn" disabled>Soumettre la demande</button>
-                <p id="form-feedback" style="margin-top:10px; font-weight:bold;"></p>
-            </form>
-        </div>
+    <div class="field">
+      <label for="fin">Fin du prêt</label>
+      <input id="fin" type="datetime-local">
     </div>
+  </div>
 
-    <!-- ONGLET 2 : MES PRÊTS -->
-    <div id="tab-mes-prets" class="tab-content">
-        <div class="card">
-            <h3>Mes demandes en cours</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Matériel</th>
-                        <th>Qté</th>
-                        <th>Période</th>
-                        <th>Statut</th>
-                    </tr>
-                </thead>
-                <tbody id="my-loans-tbody">
-                    <tr><td colspan="4">En attente...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
+  <div class="field">
+    <label for="details">Motif de la demande</label>
+    <textarea id="details"
+      placeholder="Précisez l'utilisation prévue du matériel..."></textarea>
+  </div>
 
-    <!-- ONGLET 3 : RÉFÉRENT -->
-    <div id="tab-referent" class="tab-content">
-        <div class="card">
-            <h3>Validation des demandes (Espace Référent)</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Demandeur</th>
-                        <th>Matériel</th>
-                        <th>Qté</th>
-                        <th>Période</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody id="referent-loans-tbody">
-                    <tr><td colspan="5">Aucune demande en attente.</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
+  <div id="disponibilite" class="info">
+    Sélectionnez un matériel et une période.
+  </div>
 
-    <script>
-        let currentUserId = null;
-        let isReferent = false;
-        let listMateriel = [];
-        let mapMateriel = {};
-        let recordsPrets = [];
-        let mapUsers = {};
+  <div id="message"></div>
 
-        grist.ready({ requiredAccess: 'full' });
+  <button id="envoyer" class="primary" disabled>
+    Envoyer la demande
+  </button>
 
-        // C'EST ICI QUE LA MAGIE OPÈRE : On écoute la ligne envoyée par la mini-vue Utilisateurs
-        grist.onRecord(function(record) {
-            if (record && record.id) {
-                currentUserId = record.id;
-                const nom = record.NomComplet || record.Email || `Agent #${record.id}`;
-                isReferent = record.ReferentMateriel ? Boolean(record.ReferentMateriel) : false;
+  <p class="small">
+    Votre identité est renseignée automatiquement par GRIST.
+    Le statut initial de votre demande sera « En attente ».
+  </p>
+</div>
 
-                document.getElementById('user-display').textContent = `✅ Connecté : ${nom}`;
-                document.getElementById('submit-btn').disabled = false;
-                
-                const badge = document.getElementById('referent-badge');
-                const tabRef = document.getElementById('tab-btn-referent');
-                if (isReferent) {
-                    badge.style.display = 'inline-block';
-                    tabRef.style.display = 'inline-block';
-                } else {
-                    badge.style.display = 'none';
-                    tabRef.style.display = 'none';
-                }
-                renderViews();
-            } else {
-                currentUserId = null;
-                document.getElementById('user-display').textContent = "⚠️ Aucun agent détecté dans la mini-vue.";
-                document.getElementById('submit-btn').disabled = true;
-            }
-        });
+<div class="panel">
+  <h3>Demandes en attente de validation</h3>
+  <div id="attentes">Chargement...</div>
+</div>
 
-        grist.onRecords(function(records) {
-            recordsPrets = records || [];
-            renderViews();
-        });
+<script>
+const TABLE_MATERIEL = "MATERIEL";
+const TABLE_PRET = "PRET_MATERIEL";
 
-        async function resolveTableName(targetName) {
-            const tables = await grist.docApi.listTables();
-            return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
+let materiels = [];
+let prets = [];
+
+const $ = id => document.getElementById(id);
+
+function rowsFromGrist(data) {
+  if (!data || !data.id) return [];
+
+  return data.id.map((id, i) => {
+    const row = {id};
+
+    for (const key of Object.keys(data)) {
+      if (key !== "id") {
+        row[key] = data[key][i];
+      }
+    }
+    return row;
+  });
+}
+
+function dateSeconds(value) {
+  return new Date(value).getTime() / 1000;
+}
+
+function displayDate(seconds) {
+  if (!seconds) return "Non renseigné";
+
+  return new Date(seconds * 1000).toLocaleString("fr-FR");
+}
+
+function overlaps(start1, end1, start2, end2) {
+  return start1 < end2 && end1 > start2;
+}
+
+function reservationsConcernees(materielId, debut, fin) {
+  return prets.filter(p =>
+    Number(p.Materiel) === Number(materielId) &&
+    ["En attente", "Validé"].includes(p.Statut) &&
+    p.DebutPret != null &&
+    p.FinPret != null &&
+    overlaps(
+      Number(p.DebutPret),
+      Number(p.FinPret),
+      debut,
+      fin
+    )
+  );
+}
+
+function stockDisponible(materielId, debut, fin) {
+  const m = materiels.find(
+    x => Number(x.id) === Number(materielId)
+  );
+
+  if (!m) return 0;
+
+  const reserve = reservationsConcernees(
+    materielId, debut, fin
+  ).reduce((total, p) => total + Number(p.Quantite || 0), 0);
+
+  return Number(m.Quantite || 0) - reserve;
+}
+
+async function chargerDonnees() {
+  const [m, p] = await Promise.all([
+    grist.docApi.fetchTable(TABLE_MATERIEL),
+    grist.docApi.fetchTable(TABLE_PRET)
+  ]);
+
+  materiels = rowsFromGrist(m);
+  prets = rowsFromGrist(p);
+
+  afficherCatalogue();
+  afficherAttentes();
+  verifierDisponibilite();
+}
+
+function afficherCatalogue() {
+  const select = $("materiel");
+  select.innerHTML = '<option value="">Choisir un matériel</option>';
+
+  materiels.forEach(m => {
+    const option = document.createElement("option");
+    option.value = m.id;
+    option.textContent =
+      (m.IdMateriel ? m.IdMateriel + " - " : "") +
+      m.Materiel +
+      " (stock : " + m.Quantite + ")";
+    select.appendChild(option);
+  });
+}
+
+function verifierDisponibilite() {
+  const id = $("materiel").value;
+  const q = Number($("quantite").value);
+  const d1 = $("debut").value;
+  const d2 = $("fin").value;
+
+  const button = $("envoyer");
+  const zone = $("disponibilite");
+
+  button.disabled = true;
+
+  if (!id || !d1 || !d2 || !q || q < 1 ||
+      !Number.isInteger(q)) {
+    zone.textContent =
+      "Renseignez le matériel, la quantité et les dates.";
+    return;
+  }
+
+  const debut = dateSeconds(d1);
+  const fin = dateSeconds(d2);
+
+  if (!Number.isFinite(debut) ||
+      !Number.isFinite(fin) ||
+      fin <= debut) {
+    zone.textContent =
+      "La date de fin doit être postérieure à la date de début.";
+    return;
+  }
+
+  const dispo = stockDisponible(id, debut, fin);
+
+  zone.textContent =
+    "Quantité disponible sur cette période : " +
+    Math.max(0, dispo) + " exemplaire(s).";
+
+  if (dispo >= q) {
+    zone.className = "ok";
+    button.disabled = false;
+  } else {
+    zone.className = "error";
+    zone.textContent +=
+      " Stock insuffisant pour cette demande.";
+  }
+}
+
+async function envoyerDemande() {
+  const id = Number($("materiel").value);
+  const q = Number($("quantite").value);
+  const debut = dateSeconds($("debut").value);
+  const fin = dateSeconds($("fin").value);
+  const details = $("details").value.trim();
+
+  const button = $("envoyer");
+  const message = $("message");
+
+  button.disabled = true;
+  message.textContent = "";
+
+  try {
+    // Nouvelle vérification juste avant l'enregistrement.
+    await chargerDonnees();
+
+    const dispo = stockDisponible(id, debut, fin);
+
+    if (dispo < q) {
+      throw new Error(
+        "Le stock vient d'être réservé par une autre demande. " +
+        "Veuillez actualiser vos dates ou votre quantité."
+      );
+    }
+
+    // Ne jamais transmettre Demandeur, EmailCreateur,
+    // ReferentMateriel ou Statut depuis le navigateur.
+    await grist.docApi.applyUserActions([
+      [
+        "AddRecord",
+        TABLE_PRET,
+        null,
+        {
+          Materiel: id,
+          Quantite: q,
+          DebutPret: debut,
+          FinPret: fin,
+          DetailsDemande: details
         }
+      ]
+    ]);
 
-        async function initApp() {
-            try {
-                // Charger la table des utilisateurs uniquement pour mapper les noms dans l'espace référent
-                const userTable = await resolveTableName('Utilisateurs');
-                if (userTable) {
-                    const userData = await grist.docApi.fetchTable(userTable);
-                    mapUsers = {};
-                    if (userData && userData.id) {
-                        for (let i = 0; i < userData.id.length; i++) {
-                            const nom = userData.NomComplet ? String(userData.NomComplet[i]) : (userData.Nom ? String(userData.Nom[i]) : '');
-                            mapUsers[userData.id[i]] = nom;
-                        }
-                    }
-                }
+    message.className = "ok";
+    message.textContent =
+      "Votre demande a bien été enregistrée dans GRIST.";
 
-                // Charger le catalogue MATERIEL
-                const matTable = await resolveTableName('MATERIEL');
-                if (matTable) {
-                    const matData = await grist.docApi.fetchTable(matTable);
-                    listMateriel = [];
-                    mapMateriel = {};
-                    if (matData && matData.id) {
-                        for (let i = 0; i < matData.id.length; i++) {
-                            const item = {
-                                id: matData.id[i],
-                                nom: matData.Materiel ? String(matData.Materiel[i]) : '',
-                                categorie: matData.Categorie ? String(matData.Categorie[i]) : '',
-                                quantite: matData.Quantite ? Number(matData.Quantite[i]) : 1
-                            };
-                            mapMateriel[item.id] = item;
-                            listMateriel.push(item);
-                        }
-                    }
-                    populateCategories();
-                    populateMaterielSelect();
-                }
-            } catch (e) {
-                console.error("Erreur d'initialisation :", e);
-            }
-        }
+    $("quantite").value = 1;
+    $("details").value = "";
+    $("debut").value = "";
+    $("fin").value = "";
 
-        initApp();
+    await chargerDonnees();
 
-        function populateCategories() {
-            const catSelect = document.getElementById('filter-categorie');
-            const categoriesSet = new Set();
-            listMateriel.forEach(m => { if (m.categorie) categoriesSet.add(m.categorie); });
-            
-            catSelect.innerHTML = '<option value="">Toutes les catégories</option>';
-            Array.from(categoriesSet).sort().forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = cat;
-                catSelect.appendChild(opt);
-            });
-        }
+  } catch (e) {
+    message.className = "error";
+    message.textContent =
+      "Impossible d'enregistrer la demande : " + e.message;
+    button.disabled = false;
+  }
+}
 
-        function populateMaterielSelect() {
-            const catFilter = document.getElementById('filter-categorie').value;
-            const select = document.getElementById('select-materiel');
-            select.innerHTML = '<option value="">-- Sélectionnez un équipement --</option>';
-            
-            listMateriel.forEach(m => {
-                if (!catFilter || m.categorie === catFilter) {
-                    const opt = document.createElement('option');
-                    opt.value = m.id;
-                    opt.textContent = `${m.nom} (Stock : ${m.quantite})`;
-                    select.appendChild(opt);
-                }
-            });
-            checkAvailability();
-        }
+function afficherAttentes() {
+  const zone = $("attentes");
 
-        document.getElementById('filter-categorie').addEventListener('change', populateMaterielSelect);
-        document.getElementById('select-materiel').addEventListener('change', checkAvailability);
-        document.getElementById('quantite-demande').addEventListener('input', checkAvailability);
-        document.getElementById('debut-pret').addEventListener('change', checkAvailability);
-        document.getElementById('fin-pret').addEventListener('change', checkAvailability);
+  const liste = prets.filter(
+    p => p.Statut === "En attente"
+  );
 
-        function checkAvailability() {
-            const matId = Number(document.getElementById('select-materiel').value);
-            const qteDemandee = parseInt(document.getElementById('quantite-demande').value) || 1;
-            const debutVal = document.getElementById('debut-pret').value;
-            const finVal = document.getElementById('fin-pret').value;
-            const banner = document.getElementById('availability-box');
-            const submitBtn = document.getElementById('submit-btn');
+  zone.innerHTML = "";
 
-            if (!matId || !debutVal || !finVal || !currentUserId) {
-                banner.style.display = 'none';
-                return;
-            }
+  if (!liste.length) {
+    zone.textContent = "Aucune demande en attente.";
+    return;
+  }
 
-            const debutMs = new Date(debutVal).getTime();
-            const finMs = new Date(finVal).getTime();
+  liste.forEach(p => {
+    const materiel = materiels.find(
+      m => Number(m.id) === Number(p.Materiel)
+    );
 
-            if (debutMs >= finMs) {
-                banner.style.display = 'block';
-                banner.className = 'availability-banner avail-ko';
-                banner.textContent = "⚠️ La date de début doit être antérieure à la date de fin.";
-                submitBtn.disabled = true;
-                return;
-            }
+    const bloc = document.createElement("div");
+    bloc.className = "request";
 
-            const item = mapMateriel[matId];
-            if (!item) return;
+    const titre = document.createElement("strong");
+    titre.textContent =
+      materiel ? materiel.Materiel : "Matériel inconnu";
 
-            let qteDejaPretee = 0;
-            recordsPrets.forEach(p => {
-                if (Number(p.Materiel) !== matId) return;
-                const statut = String(p.Statut || 'En attente');
-                if (statut === 'Refusé' || statut === 'Clôturé') return;
+    const infos = document.createElement("p");
+    infos.textContent =
+      "Quantité : " + p.Quantite +
+      " | Du " + displayDate(p.DebutPret) +
+      " au " + displayDate(p.FinPret);
 
-                const pDebut = p.DebutPret ? new Date(p.DebutPret).getTime() : null;
-                const pFin = p.FinPret ? new Date(p.FinPret).getTime() : null;
-                if (!pDebut || !pFin) return;
+    const demandeur = document.createElement("p");
+    demandeur.className = "small";
 
-                if (debutMs < pFin && finMs > pDebut) {
-                    qteDejaPretee += (Number(p.Quantite) || 1);
-                }
-            });
+    const utilisateur = p.Demandeur;
+    demandeur.textContent =
+      "Demande n° " + p.id +
+      (utilisateur ? " | Demandeur : " + utilisateur : "");
 
-            const disponible = Math.max(0, item.quantite - qteDejaPretee);
+    const actions = document.createElement("div");
+    actions.className = "actions";
 
-            banner.style.display = 'block';
-            if (disponible === 0) {
-                banner.className = 'availability-banner avail-ko';
-                banner.textContent = `❌ Aucun exemplaire disponible sur ce créneau (0 / ${item.quantite} libre).`;
-                submitBtn.disabled = true;
-            } else if (disponible < qteDemandee) {
-                banner.className = 'availability-banner avail-ko';
-                banner.textContent = `❌ Stock insuffisant : seulement ${disponible} exemplaire(s) disponible(s).`;
-                submitBtn.disabled = true;
-            } else {
-                banner.className = 'availability-banner avail-ok';
-                banner.textContent = `✅ Matériel disponible : ${disponible} exemplaire(s) libre(s) sur ${item.quantite}.`;
-                submitBtn.disabled = false;
-            }
-        }
+    const valider = document.createElement("button");
+    valider.className = "success";
+    valider.textContent = "Valider";
+    valider.onclick = () => modifierStatut(p.id, "Validé");
 
-        window.switchTab = function(tabName, btn) {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById(`tab-${tabName}`).classList.add('active');
-        };
+    const refuser = document.createElement("button");
+    refuser.className = "danger";
+    refuser.textContent = "Refuser";
+    refuser.onclick = () => modifierStatut(p.id, "Refusé");
 
-        document.getElementById('loan-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            if (!currentUserId) { alert("Agent non identifié."); return; }
+    actions.append(valider, refuser);
+    bloc.append(titre, infos, demandeur, actions);
+    zone.appendChild(bloc);
+  });
+}
 
-            const payload = {
-                Materiel: Number(document.getElementById('select-materiel').value),
-                Quantite: Number(document.getElementById('quantite-demande').value),
-                Demandeur: currentUserId,
-                DateDemande: new Date().toISOString().split('T')[0],
-                DebutPret: new Date(document.getElementById('debut-pret').value).toISOString(),
-                FinPret: new Date(document.getElementById('fin-pret').value).toISOString(),
-                DetailsDemande: document.getElementById('details-demande').value,
-                Statut: 'En attente'
-            };
+async function modifierStatut(id, statut) {
+  try {
+    await grist.docApi.applyUserActions([
+      [
+        "UpdateRecord",
+        TABLE_PRET,
+        id,
+        {Statut: statut}
+      ]
+    ]);
 
-            try {
-                const pretTable = await resolveTableName('PRET_MATERIEL');
-                await grist.docApi.applyUserActions([['AddRecord', pretTable || 'PRET_MATERIEL', null, payload]]);
-                document.getElementById('form-feedback').style.color = 'green';
-                document.getElementById('form-feedback').textContent = "Demande envoyée avec succès !";
-                this.reset();
-                document.getElementById('availability-box').style.display = 'none';
-            } catch (err) {
-                document.getElementById('form-feedback').style.color = 'red';
-                document.getElementById('form-feedback').textContent = "Erreur : " + err.message;
-            }
-        });
+    await chargerDonnees();
 
-        function renderViews() {
-            renderMyLoans();
-            renderReferentLoans();
-        }
+  } catch (e) {
+    alert(
+      "Action refusée par GRIST. " +
+      "Vous n'êtes peut-être pas référent autorisé " +
+      "pour ce matériel ou ce service.\n\n" + e.message
+    );
+  }
+}
 
-        function renderMyLoans() {
-            const tbody = document.getElementById('my-loans-tbody');
-            if (!currentUserId) { tbody.innerHTML = '<tr><td colspan="4">En attente de l\'agent...</td></tr>'; return; }
-            const mine = recordsPrets.filter(p => Number(p.Demandeur) === Number(currentUserId));
-            if (mine.length === 0) { tbody.innerHTML = '<tr><td colspan="4">Aucune demande enregistrée à votre nom.</td></tr>'; return; }
+["materiel", "quantite", "debut", "fin"].forEach(id => {
+  $(id).addEventListener("change", verifierDisponibilite);
+  $(id).addEventListener("input", verifierDisponibilite);
+});
 
-            tbody.innerHTML = '';
-            mine.forEach(p => {
-                const mat = mapMateriel[Number(p.Materiel)] || {};
-                tbody.innerHTML += `<tr><td>${mat.nom || 'Matériel'}</td><td>${p.Quantite}</td><td>${new Date(p.DebutPret).toLocaleString()}</td><td><span class="badge badge-attente">${p.Statut || 'En attente'}</span></td></tr>`;
-            });
-        }
+$("envoyer").addEventListener("click", envoyerDemande);
 
-        function renderReferentLoans() {
-            const tbody = document.getElementById('referent-loans-tbody');
-            if (!isReferent) return;
-            const toValidate = recordsPrets.filter(p => p.Statut === 'En attente');
-            if (toValidate.length === 0) { tbody.innerHTML = '<tr><td colspan="5">Aucune demande en attente.</td></tr>'; return; }
+// Le widget nécessite l'accès complet au document,
+// soumis aux règles d'accès configurées dans GRIST.
+grist.ready({
+  requiredAccess: "full"
+});
 
-            tbody.innerHTML = '';
-            toValidate.forEach(p => {
-                const mat = mapMateriel[Number(p.Materiel)] || {};
-                const dem = mapUsers[p.Demandeur] || `Agent #${p.Demandeur}`;
-                tbody.innerHTML += `<tr><td>${dem}</td><td>${mat.nom || ''}</td><td>${p.Quantite}</td><td>${new Date(p.DebutPret).toLocaleDateString()}</td><td><button onclick="validerPret(${p.id}, 'Validé')">Valider</button></td></tr>`;
-            });
-        }
-
-        window.validerPret = async function(id, statut) {
-            const pretTable = await resolveTableName('PRET_MATERIEL');
-            await grist.docApi.applyUserActions([['UpdateRecord', pretTable || 'PRET_MATERIEL', id, { Statut: statut }]]);
-        };
-    </script>
+chargerDonnees().catch(e => {
+  $("message").className = "error";
+  $("message").textContent =
+    "Erreur de connexion à GRIST : " + e.message;
+});
+</script>
 </body>
 </html>
