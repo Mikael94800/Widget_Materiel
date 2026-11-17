@@ -34,7 +34,11 @@
             justify-content: space-between;
             align-items: center;
         }
-        .user-info { font-weight: bold; color: var(--primary); }
+        .user-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
         .role-tag {
             background: #e8f4fd;
             color: var(--primary);
@@ -71,10 +75,13 @@
     <div class="top-bar">
         <div>
             <h2 style="margin:0;">Gestion du Matériel Interne</h2>
-            <small style="color:#666;">Authentification automatique & Suivi des prêts</small>
+            <small style="color:#666;">Suivi des prêts & Réservations</small>
         </div>
-        <div>
-            <span id="user-display" class="user-info">Identification en cours...</span>
+        <div class="user-selector">
+            <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent :</label>
+            <select id="current-user-select">
+                <option value="">-- Chargement des agents... --</option>
+            </select>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
     </div>
@@ -134,7 +141,7 @@
                     </tr>
                 </thead>
                 <tbody id="my-loans-tbody">
-                    <tr><td colspan="4">Chargement...</td></tr>
+                    <tr><td colspan="4">Sélectionnez votre profil agent en haut de page.</td></tr>
                 </tbody>
             </table>
         </div>
@@ -162,7 +169,6 @@
     </div>
 
     <script>
-        let currentUserEmail = null;
         let currentUserId = null;
         let isReferent = false;
         let listMateriel = [];
@@ -170,13 +176,6 @@
         let mapUsers = {};
 
         grist.ready({ requiredAccess: 'full' });
-
-        grist.onUser(async function(user) {
-            if (user && user.email) {
-                currentUserEmail = user.email.trim().toLowerCase();
-                await loadDatabaseContext();
-            }
-        });
 
         grist.onRecords(function(records) {
             recordsPrets = records || [];
@@ -188,36 +187,43 @@
             return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
         }
 
-        async function loadDatabaseContext() {
+        async function initApp() {
             try {
-                // Utilisation de l'ID natif Grist pour identifier l'utilisateur
+                // 1. Charger la table Utilisateurs pour alimenter le menu déroulant
                 const userTable = await resolveTableName('Utilisateurs');
                 if (userTable) {
                     const userData = await grist.docApi.fetchTable(userTable);
+                    mapUsers = {};
+                    const select = document.getElementById('current-user-select');
+                    select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>';
+
                     if (userData && userData.id) {
                         for (let i = 0; i < userData.id.length; i++) {
-                            const email = (userData.Email ? String(userData.Email[i]) : '').trim().toLowerCase();
+                            const email = userData.Email ? String(userData.Email[i]) : '';
                             const nom = userData.NomComplet ? String(userData.NomComplet[i]) : '';
                             const ref = userData.ReferentMateriel ? Boolean(userData.ReferentMateriel[i]) : false;
+                            const label = nom || email;
+                            if (!label) continue;
 
-                            mapUsers[userData.id[i]] = { email, nom, ref };
-
-                            if (email === currentUserEmail || nom.toLowerCase().includes(currentUserEmail)) {
-                                currentUserId = userData.id[i];
-                                isReferent = ref;
-                            }
+                            mapUsers[userData.id[i]] = { label, ref };
+                            const opt = document.createElement('option');
+                            opt.value = userData.id[i];
+                            opt.textContent = label;
+                            select.appendChild(opt);
                         }
                     }
                 }
 
-                // Fallback de test si l'e-mail de session ne matche pas directement (ex: test local)
-                if (!currentUserId && Object.keys(mapUsers).length > 0) {
-                    currentUserId = Number(Object.keys(mapUsers)[0]);
+                // Restauration du dernier agent choisi dans le navigateur
+                const savedId = localStorage.getItem('grist_mat_uid');
+                if (savedId && mapUsers[Number(savedId)]) {
+                    document.getElementById('current-user-select').value = savedId;
+                    currentUserId = Number(savedId);
                     isReferent = mapUsers[currentUserId].ref;
+                    updateUserInterface();
                 }
 
-                updateUserInterface();
-
+                // 2. Charger le catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
@@ -239,19 +245,31 @@
             }
         }
 
+        initApp();
+
+        document.getElementById('current-user-select').addEventListener('change', function(e) {
+            currentUserId = e.target.value ? Number(e.target.value) : null;
+            if (currentUserId) {
+                localStorage.setItem('grist_mat_uid', currentUserId);
+                isReferent = mapUsers[currentUserId] ? mapUsers[currentUserId].ref : false;
+            } else {
+                localStorage.removeItem('grist_mat_uid');
+                isReferent = false;
+            }
+            updateUserInterface();
+            renderViews();
+        });
+
         function updateUserInterface() {
-            const display = document.getElementById('user-display');
             const badge = document.getElementById('referent-badge');
             const tabRef = document.getElementById('tab-btn-referent');
 
-            if (currentUserId && mapUsers[currentUserId]) {
-                display.textContent = `Connecté : ${mapUsers[currentUserId].nom || currentUserEmail}`;
-                if (isReferent) {
-                    badge.style.display = 'inline-block';
-                    tabRef.style.display = 'inline-block';
-                }
+            if (isReferent) {
+                badge.style.display = 'inline-block';
+                tabRef.style.display = 'inline-block';
             } else {
-                display.textContent = `Utilisateur non reconnu (${currentUserEmail})`;
+                badge.style.display = 'none';
+                tabRef.style.display = 'none';
             }
         }
 
@@ -275,7 +293,7 @@
 
         document.getElementById('loan-form').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if (!currentUserId) { alert("Utilisateur non identifié."); return; }
+            if (!currentUserId) { alert("Veuillez sélectionner votre nom en haut de page."); return; }
 
             const payload = {
                 Materiel: Number(document.getElementById('select-materiel').value),
@@ -307,9 +325,9 @@
 
         function renderMyLoans() {
             const tbody = document.getElementById('my-loans-tbody');
-            if (!currentUserId) return;
+            if (!currentUserId) { tbody.innerHTML = '<tr><td colspan="4">Sélectionnez votre profil agent en haut de page.</td></tr>'; return; }
             const mine = recordsPrets.filter(p => Number(p.Demandeur) === Number(currentUserId));
-            if (mine.length === 0) { tbody.innerHTML = '<tr><td colspan="4">Aucune demande.</td></tr>'; return; }
+            if (mine.length === 0) { tbody.innerHTML = '<tr><td colspan="4">Aucune demande enregistrée à votre nom.</td></tr>'; return; }
 
             tbody.innerHTML = '';
             mine.forEach(p => {
@@ -327,7 +345,7 @@
             tbody.innerHTML = '';
             toValidate.forEach(p => {
                 const mat = listMateriel.find(m => m.id === Number(p.Materiel)) || {};
-                const dem = mapUsers[p.Demandeur] ? mapUsers[p.Demandeur].nom : `Agent #${p.Demandeur}`;
+                const dem = mapUsers[p.Demandeur] ? mapUsers[p.Demandeur].label : `Agent #${p.Demandeur}`;
                 tbody.innerHTML += `<tr><td>${dem}</td><td>${mat.nom || ''}</td><td>${p.Quantite}</td><td>${new Date(p.DebutPret).toLocaleDateString()}</td><td><button onclick="validerPret(${p.id}, 'Validé')">Valider</button></td></tr>`;
             });
         }
