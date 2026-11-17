@@ -367,6 +367,58 @@
             }
         }
 
+        function populateUserSelect() {
+            const select = document.getElementById('current-user-select');
+            select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>';
+            listUsers.sort((a, b) => a.label.localeCompare(b.label)).forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u.id;
+                opt.textContent = u.label;
+                select.appendChild(opt);
+            });
+        }
+
+        function populateCategoriesFromMateriel() {
+            const catSelect = document.getElementById('filter-categorie');
+            const currentCat = catSelect.value;
+            const categoriesSet = new Set();
+
+            listMateriel.forEach(item => {
+                if (item.Categorie) categoriesSet.add(item.Categorie);
+            });
+
+            catSelect.innerHTML = '<option value="">Toutes les catégories</option>';
+            Array.from(categoriesSet).sort().forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                catSelect.appendChild(opt);
+            });
+
+            if (categoriesSet.has(currentCat)) catSelect.value = currentCat;
+        }
+
+        function populateMaterielSelect() {
+            const catFilter = document.getElementById('filter-categorie').value;
+            const select = document.getElementById('select-materiel');
+            const currentVal = select.value;
+            
+            select.innerHTML = '<option value="">-- Sélectionnez un équipement --</option>';
+            
+            listMateriel.forEach(item => {
+                if (!catFilter || item.Categorie === catFilter) {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    const prefix = item.IdMateriel ? `${item.IdMateriel} - ` : '';
+                    opt.textContent = `${prefix}${item.Materiel} (Stock : ${item.Quantite})`;
+                    select.appendChild(opt);
+                }
+            });
+
+            if (currentVal && mapMateriel[currentVal]) select.value = currentVal;
+            checkAvailability();
+        }
+
         async function initApp() {
             try {
                 // 1. Chargement de la table Utilisateurs
@@ -394,7 +446,7 @@
                     populateUserSelect();
                 }
 
-                // 2. Chargement du catalogue MATERIEL (isolé avec try/catch spécifique)
+                // 2. Chargement du catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
@@ -443,17 +495,6 @@
 
         initApp();
 
-        function populateUserSelect() {
-            const select = document.getElementById('current-user-select');
-            select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>';
-            listUsers.sort((a, b) => a.label.localeCompare(b.label)).forEach(u => {
-                const opt = document.createElement('option');
-                opt.value = u.id;
-                opt.textContent = u.label;
-                select.appendChild(opt);
-            });
-        }
-
         document.getElementById('current-user-select').addEventListener('change', function(e) {
             currentUserId = e.target.value ? Number(e.target.value) : null;
             if (currentUserId) {
@@ -497,27 +538,6 @@
         document.getElementById('quantite-demande').addEventListener('input', checkAvailability);
         document.getElementById('debut-pret').addEventListener('change', checkAvailability);
         document.getElementById('fin-pret').addEventListener('change', checkAvailability);
-
-        function populateMaterielSelect() {
-            const catFilter = document.getElementById('filter-categorie').value;
-            const select = document.getElementById('select-materiel');
-            const currentVal = select.value;
-            
-            select.innerHTML = '<option value="">-- Sélectionnez un équipement --</option>';
-            
-            listMateriel.forEach(item => {
-                if (!catFilter || item.Categorie === catFilter) {
-                    const opt = document.createElement('option');
-                    opt.value = item.id;
-                    const prefix = item.IdMateriel ? `${item.IdMateriel} - ` : '';
-                    opt.textContent = `${prefix}${item.Materiel} (Stock : ${item.Quantite})`;
-                    select.appendChild(opt);
-                }
-            });
-
-            if (currentVal && mapMateriel[currentVal]) select.value = currentVal;
-            checkAvailability();
-        }
 
         function checkAvailability() {
             const matRowId = Number(document.getElementById('select-materiel').value);
