@@ -1,333 +1,315 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Gestion Matériel - ICOM Sécurisé</title>
-    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-    <style>
-        :root {
-            --primary: #1f4e78;
-            --success: #27ae60;
-            --warning: #e67e22;
-            --danger: #c0392b;
-            --bg: #f4f6f9;
-            --card-bg: #ffffff;
-            --border: #dce1e7;
-            --text: #2c3e50;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            margin: 0;
-            padding: 16px;
-            background-color: var(--bg);
-            color: var(--text);
-            font-size: 14px;
-        }
-        h2, h3 { color: var(--primary); margin-top: 0; }
-        .top-bar {
-            background: var(--card-bg);
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .user-info { font-weight: bold; color: var(--primary); display: flex; align-items: center; gap: 10px; }
-        .role-tag {
-            background: #e8f4fd;
-            color: var(--primary);
-            border: 1px solid #b6d4fe;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 12px;
-            display: none;
-        }
-        .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 8px; }
-        .tab-btn { background: transparent; color: var(--text); border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-        .tab-btn.active { background: var(--primary); color: white; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .card { background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; }
-        .form-group { display: flex; flex-direction: column; }
-        .form-group.full-width { grid-column: 1 / -1; }
-        label { font-weight: 600; margin-bottom: 5px; font-size: 13px; }
-        select, input, textarea { padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 14px; width: 100%; box-sizing: border-box; }
-        button { background-color: var(--primary); color: white; border: none; padding: 10px 18px; border-radius: 4px; cursor: pointer; font-weight: 600; margin-top: 15px; }
-        button:hover { background-color: #163856; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; min-width: 600px; }
-        th, td { border: 1px solid var(--border); padding: 10px; text-align: left; font-size: 13px; }
-        th { background-color: #f8f9fa; }
-        .badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
-        .badge-attente { background-color: var(--warning); }
-        .badge-valide { background-color: var(--success); }
-        .badge-refuse { background-color: var(--danger); }
-        .alert-box { padding: 12px; border-radius: 6px; margin-bottom: 15px; font-weight: bold; background: #fdedec; color: #922b21; border: 1px solid #f5b7b1; display: none; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Réservation de Matériel Interne</title>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { margin: 0; padding: 16px; background-color: #f8fafc; font-size: 15.5px; color: #1f2937; }
+
+    .form-card { background: #ffffff; border-radius: 10px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; max-width: 900px; margin: 0 auto; }
+    .card-title { font-size: 22px; font-weight: 700; color: #1f2937; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; }
+
+    .section-title { font-size: 16px; font-weight: bold; color: #111827; margin-top: 20px; margin-bottom: 12px; padding-bottom: 4px; border-bottom: 2px solid #1f4e78; display: flex; align-items: center; gap: 8px; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
+    .field-group { display: flex; flex-direction: column; gap: 4px; }
+    .field-group.full { grid-column: span 2; }
+    
+    label { font-size: 13px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: 0.3px; }
+    
+    input[type="text"], input[type="number"], input[type="datetime-local"], select, textarea { 
+      padding: 9.5px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 15px; outline: none; background-color: #fff; width: 100%; transition: all 0.2s; 
+    }
+    input:focus, select:focus, textarea:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.15); }
+
+    textarea { resize: vertical; min-height: 80px; }
+
+    .availability-banner { padding: 12px; border-radius: 6px; margin-top: 15px; font-weight: bold; font-size: 14px; display: none; }
+    .avail-ok { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+    .avail-ko { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+    .actions { display: flex; gap: 12px; margin-top: 24px; justify-content: flex-end; }
+    .btn-submit { background-color: #1f4e78; color: white; border: none; padding: 14px 28px; font-size: 17px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; transition: background-color 0.2s; }
+    .btn-submit:hover { background-color: #163856; }
+    .btn-submit:disabled { opacity: 0.65; cursor: wait; }
+
+    #debug-box { margin-top: 20px; padding: 12px; background: #fef2f2; border: 1px solid #ef4444; border-radius: 6px; color: #991b1b; font-family: monospace; font-size: 13px; white-space: pre-wrap; display: none; }
+    
+    .user-badge { background: #e8f4fd; color: #1f4e78; padding: 8px 12px; border-radius: 6px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #b6d4fe; }
+  </style>
 </head>
 <body>
 
-    <div class="top-bar">
-        <div>
-            <h2 style="margin:0;">Gestion du Matériel Interne</h2>
-            <small style="color:#666;">Authentification sécurisée par liaison ICOM</small>
-        </div>
-        <div class="user-info">
-            <span id="user-display">🔒 En attente de l'agent...</span>
-            <span id="referent-badge" class="role-tag">Référent Matériel</span>
-        </div>
+  <div class="form-card">
+    <div class="card-title">📦 Réservation de Matériel</div>
+
+    <!-- Encart affichant l'agent transmis par la vue liée Grist -->
+    <div id="user-badge" class="user-badge">
+      <span>👤 Demandeur actif : <strong id="agent-nom">En attente de sélection...</strong></span>
+      <span id="role-referent-tag" style="display:none; background:#1f4e78; color:#fff; padding:2px 8px; border-radius:4px; font-size:12px;">Référent</span>
     </div>
 
-    <div id="global-alert" class="alert-box"></div>
-
-    <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('demande', this)">1. Nouvelle Demande</button>
-        <button class="tab-btn" onclick="switchTab('mes-prets', this)">2. Mes Demandes</button>
-        <button class="tab-btn" id="tab-btn-referent" style="display:none;" onclick="switchTab('referent', this)">3. Espace Référent</button>
-    </div>
-
-    <!-- ONGLET 1 : DEMANDE -->
-    <div id="tab-demande" class="tab-content active">
-        <div class="card">
-            <h3>Réserver du matériel</h3>
-            <form id="loan-form">
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="select-materiel">Matériel :</label>
-                        <select id="select-materiel" required>
-                            <option value="">-- Chargement du matériel --</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="quantite-demande">Quantité :</label>
-                        <input type="number" id="quantite-demande" min="1" value="1" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="debut-pret">Début :</label>
-                        <input type="datetime-local" id="debut-pret" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="fin-pret">Fin :</label>
-                        <input type="datetime-local" id="fin-pret" required>
-                    </div>
-                    <div class="form-group full-width">
-                        <label for="details-demande">Contexte / Détails :</label>
-                        <textarea id="details-demande" placeholder="Précisez l'événement..." required></textarea>
-                    </div>
-                </div>
-                <button type="submit">Soumettre la demande</button>
-                <p id="form-feedback" style="margin-top:10px; font-weight:bold;"></p>
-            </form>
+    <form id="loan-form" onsubmit="enregistrerPret(event)">
+      
+      <div class="section-title">🛠️ Choix de l'équipement</div>
+      
+      <div class="grid-2">
+        <div class="field-group">
+          <label>Filtrer par catégorie</label>
+          <select id="filter-categorie" onchange="filtrerMateriel()">
+            <option value="">Toutes les catégories</option>
+          </select>
         </div>
-    </div>
-
-    <!-- ONGLET 2 : MES PRÊTS -->
-    <div id="tab-mes-prets" class="tab-content">
-        <div class="card">
-            <h3>Mes demandes en cours</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Matériel</th>
-                        <th>Qté</th>
-                        <th>Période</th>
-                        <th>Statut</th>
-                    </tr>
-                </thead>
-                <tbody id="my-loans-tbody">
-                    <tr><td colspan="4">Sélectionnez votre profil dans la vue liée.</td></tr>
-                </tbody>
-            </table>
+        <div class="field-group">
+          <label>Matériel souhaité *</label>
+          <select id="select-materiel" required onchange="verifierDisponibilite()">
+            <option value="">-- Sélectionnez un équipement --</option>
+          </select>
         </div>
-    </div>
+      </div>
 
-    <!-- ONGLET 3 : RÉFÉRENT -->
-    <div id="tab-referent" class="tab-content">
-        <div class="card">
-            <h3>Validation des demandes (Espace Référent)</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Demandeur</th>
-                        <th>Matériel</th>
-                        <th>Qté</th>
-                        <th>Période</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody id="referent-loans-tbody">
-                    <tr><td colspan="5">Aucune demande en attente.</td></tr>
-                </tbody>
-            </table>
+      <div class="grid-3" style="display: grid; grid-template-columns: 1fr 2fr 2fr; gap: 16px; margin-bottom: 12px;">
+        <div class="field-group">
+          <label>Quantité *</label>
+          <input type="number" id="quantite-demande" min="1" value="1" required oninput="verifierDisponibilite()">
         </div>
-    </div>
+        <div class="field-group">
+          <label>Date et heure de début *</label>
+          <input type="datetime-local" id="debut-pret" required onchange="verifierDisponibilite()">
+        </div>
+        <div class="field-group">
+          <label>Date et heure de fin *</label>
+          <input type="datetime-local" id="fin-pret" required onchange="verifierDisponibilite()">
+        </div>
+      </div>
 
-    <script>
-        let currentUserId = null;
-        let isReferent = false;
-        let listMateriel = [];
-        let recordsPrets = [];
-        let mapUsers = {};
+      <div id="availability-box" class="availability-banner"></div>
 
-        grist.ready({ requiredAccess: 'full' });
+      <div class="section-title">📝 Contexte de la demande</div>
+      <div class="field-group full">
+        <label>Motif / Détails de l'emprunt *</label>
+        <textarea id="details-demande" placeholder="Précisez l'événement, le lieu ou l'usage..." required></textarea>
+      </div>
 
-        // C'EST ICI QUE LA MAGIE ICOM OPÈRE : 
-        // Le widget écoute l'enregistrement actif transmis par Grist (filtré par la vue liée)
-        grist.onRecord(function(record) {
-            if (record && record.id) {
-                currentUserId = record.id;
-                const nom = record.NomComplet || record.Email || `Agent #${record.id}`;
-                isReferent = record.ReferentMateriel ? Boolean(record.ReferentMateriel) : false;
+      <div class="actions">
+        <button type="submit" class="btn-submit" id="submit-btn">✔ Soumettre la demande de prêt</button>
+      </div>
 
-                document.getElementById('user-display').textContent = `✅ Connecté : ${nom}`;
-                
-                const badge = document.getElementById('referent-badge');
-                const tabRef = document.getElementById('tab-btn-referent');
-                if (isReferent) {
-                    badge.style.display = 'inline-block';
-                    tabRef.style.display = 'inline-block';
-                } else {
-                    badge.style.display = 'none';
-                    tabRef.style.display = 'none';
-                }
-                renderViews();
-            } else {
-                document.getElementById('user-display').textContent = "⚠️ Aucun agent sélectionné dans la vue liée.";
-            }
-        });
+      <div id="debug-box"></div>
+    </form>
+  </div>
 
-        grist.onRecords(function(records) {
-            recordsPrets = records || [];
-            renderViews();
-        });
+  <script>
+    grist.ready({ requiredAccess: 'full' });
 
-        async function resolveTableName(targetName) {
-            const tables = await grist.docApi.listTables();
-            return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
+    let currentUserId = null;
+    let isReferent = false;
+    let catalogMateriel = [];
+    let recordsPrets = [];
+
+    // 1. Liaison ICOM : Le widget écoute l'agent sélectionné dans la vue parente (table Utilisateurs)
+    grist.onRecord(function(record) {
+      const nomSpan = document.getElementById('agent-nom');
+      const badgeReferent = document.getElementById('role-referent-tag');
+
+      if (record && record.id) {
+        currentUserId = record.id;
+        const nomComplet = record.NomComplet || record.Email || `Agent #${record.id}`;
+        isReferent = Boolean(record.ReferentMateriel);
+
+        nomSpan.textContent = nomComplet;
+        if (isReferent) {
+          badgeReferent.style.display = 'inline-block';
+        } else {
+          badgeReferent.style.display = 'none';
         }
+      } else {
+        currentUserId = null;
+        nomSpan.textContent = "Aucun agent sélectionné (Veuillez sélectionner votre ligne dans la table Utilisateurs au-dessus)";
+        badgeReferent.style.display = 'none';
+      }
+    });
 
-        async function initApp() {
-            try {
-                // 1. Charger la table des utilisateurs pour le mapping des noms dans l'espace référent
-                const userTable = await resolveTableName('Utilisateurs');
-                if (userTable) {
-                    const userData = await grist.docApi.fetchTable(userTable);
-                    mapUsers = {};
-                    if (userData && userData.id) {
-                        for (let i = 0; i < userData.id.length; i++) {
-                            const nom = userData.NomComplet ? String(userData.NomComplet[i]) : '';
-                            const email = userData.Email ? String(userData.Email[i]) : '';
-                            mapUsers[userData.id[i]] = nom || email;
-                        }
-                    }
-                }
+    // 2. Écoute de la table des prêts pour le calcul des stocks en temps réel
+    grist.onRecords(function(records) {
+      recordsPrets = records || [];
+      verifierDisponibilite();
+    });
 
-                // 2. Charger le catalogue MATERIEL
-                const matTable = await resolveTableName('MATERIEL');
-                if (matTable) {
-                    const matData = await grist.docApi.fetchTable(matTable);
-                    listMateriel = [];
-                    if (matData && matData.id) {
-                        for (let i = 0; i < matData.id.length; i++) {
-                            listMateriel.push({
-                                id: matData.id[i],
-                                nom: matData.Materiel ? String(matData.Materiel[i]) : '',
-                                quantite: matData.Quantite ? Number(matData.Quantite[i]) : 1
-                            });
-                        }
-                    }
-                    populateMaterielSelect();
-                }
-            } catch (e) {
-                console.error("Erreur d'initialisation :", e);
-            }
-        }
+    async function initialiserCatalogue() {
+      try {
+        const tables = await grist.docApi.listTables();
 
-        initApp();
-
-        function populateMaterielSelect() {
-            const select = document.getElementById('select-materiel');
-            select.innerHTML = '<option value="">-- Sélectionnez un équipement --</option>';
-            listMateriel.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.id;
-                opt.textContent = `${m.nom} (Stock : ${m.quantite})`;
-                select.appendChild(opt);
-            });
-        }
-
-        window.switchTab = function(tabName, btn) {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById(`tab-${tabName}`).classList.add('active');
-        };
-
-        document.getElementById('loan-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            if (!currentUserId) { alert("Agent non identifié par la vue liée."); return; }
-
-            const payload = {
-                Materiel: Number(document.getElementById('select-materiel').value),
-                Quantite: Number(document.getElementById('quantite-demande').value),
-                Demandeur: currentUserId,
-                DateDemande: new Date().toISOString().split('T')[0],
-                DebutPret: new Date(document.getElementById('debut-pret').value).toISOString(),
-                FinPret: new Date(document.getElementById('fin-pret').value).toISOString(),
-                DetailsDemande: document.getElementById('details-demande').value,
-                Statut: 'En attente'
+        if (tables.includes('MATERIEL')) {
+          const rawMat = await grist.docApi.fetchTable('MATERIEL');
+          const ids = rawMat.id || [];
+          
+          catalogMateriel = ids.map((id, index) => {
+            return {
+              id,
+              IdMateriel: rawMat.IdMateriel ? String(rawMat.IdMateriel[index]) : '',
+              Materiel: rawMat.Materiel ? String(rawMat.Materiel[index]) : '',
+              Categorie: rawMat.Categorie ? String(rawMat.Categorie[index]) : '',
+              Quantite: rawMat.Quantite !== undefined && rawMat.Quantite[index] !== null ? Number(rawMat.Quantite[index]) : 1
             };
+          });
 
-            try {
-                const pretTable = await resolveTableName('PRET_MATERIEL');
-                await grist.docApi.applyUserActions([['AddRecord', pretTable || 'PRET_MATERIEL', null, payload]]);
-                document.getElementById('form-feedback').style.color = 'green';
-                document.getElementById('form-feedback').textContent = "Demande envoyée avec succès !";
-                this.reset();
-            } catch (err) {
-                document.getElementById('form-feedback').style.color = 'red';
-                document.getElementById('form-feedback').textContent = "Erreur : " + err.message;
-            }
-        });
-
-        function renderViews() {
-            renderMyLoans();
-            renderReferentLoans();
+          peuplerFiltresEtSelects();
         }
+      } catch (err) {
+        console.error("Erreur lors du chargement du matériel :", err);
+      }
+    }
 
-        function renderMyLoans() {
-            const tbody = document.getElementById('my-loans-tbody');
-            if (!currentUserId) { tbody.innerHTML = '<tr><td colspan="4">En attente de l\'agent...</td></tr>'; return; }
-            const mine = recordsPrets.filter(p => Number(p.Demandeur) === Number(currentUserId));
-            if (mine.length === 0) { tbody.innerHTML = '<tr><td colspan="4">Aucune demande enregistrée à votre nom.</td></tr>'; return; }
+    initialiserCatalogue();
 
-            tbody.innerHTML = '';
-            mine.forEach(p => {
-                const mat = listMateriel.find(m => m.id === Number(p.Materiel)) || {};
-                tbody.innerHTML += `<tr><td>${mat.nom || 'Matériel'}</td><td>${p.Quantite}</td><td>${new Date(p.DebutPret).toLocaleString()}</td><td><span class="badge badge-attente">${p.Statut || 'En attente'}</span></td></tr>`;
-            });
+    function peuplerFiltresEtSelects() {
+      const catSelect = document.getElementById('filter-categorie');
+      const matSelect = document.getElementById('select-materiel');
+      
+      const categories = [...new Set(catalogMateriel.map(m => m.Categorie).filter(Boolean))].sort();
+      
+      catSelect.replaceChildren();
+      catSelect.appendChild(new Option('Toutes les catégories', ''));
+      categories.forEach(cat => catSelect.appendChild(new Option(cat, cat)));
+
+      mettreAJourSelectMateriel(catalogMateriel);
+    }
+
+    function filtrerMateriel() {
+      const cat = document.getElementById('filter-categorie').value;
+      const filtered = cat ? catalogMateriel.filter(m => m.Categorie === cat) : catalogMateriel;
+      mettreAJourSelectMateriel(filtered);
+    }
+
+    function mettreAJourSelectMateriel(items) {
+      const matSelect = document.getElementById('select-materiel');
+      matSelect.replaceChildren();
+      matSelect.appendChild(new Option('-- Sélectionnez un équipement --', ''));
+
+      items.forEach(m => {
+        const prefix = m.IdMateriel ? `[${m.IdMateriel}] ` : '';
+        const label = `${prefix}${m.Materiel} (Stock total : ${m.Quantite})`;
+        matSelect.appendChild(new Option(label, m.id));
+      });
+      verifierDisponibilite();
+    }
+
+    function parseGristDate(val) {
+      if (!val) return null;
+      if (typeof val === 'number') return val < 10000000000 ? val * 1000 : val;
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? null : d.getTime();
+    }
+
+    function verifierDisponibilite() {
+      const banner = document.getElementById('availability-box');
+      const submitBtn = document.getElementById('submit-btn');
+      const matId = Number(document.getElementById('select-materiel').value);
+      const qteDemandee = parseInt(document.getElementById('quantite-demande').value) || 1;
+      const debutVal = document.getElementById('debut-pret').value;
+      const finVal = document.getElementById('fin-pret').value;
+
+      if (!matId || !debutVal || !finVal) {
+        banner.style.display = 'none';
+        submitBtn.disabled = false;
+        return;
+      }
+
+      const debutMs = new Date(debutVal).getTime();
+      const finMs = new Date(finVal).getTime();
+
+      if (debutMs >= finMs) {
+        banner.style.display = 'block';
+        banner.className = 'availability-banner avail-ko';
+        banner.textContent = "⚠️ La date de début doit être antérieure à la date de fin.";
+        submitBtn.disabled = true;
+        return;
+      }
+
+      const item = catalogMateriel.find(m => m.id === matId);
+      if (!item) return;
+
+      // Calcul du stock déjà emprunté sur la même période
+      let qteEmprunteEspace = 0;
+      recordsPrets.forEach(p => {
+        if (Number(p.Materiel) !== matId) return;
+        const statut = String(p.Statut || 'En attente');
+        if (statut === 'Refusé' || statut === 'Clôturé') return;
+
+        const pDebut = parseGristDate(p.DebutPret);
+        const pFin = parseGristDate(p.FinPret);
+        if (!pDebut || !pFin) return;
+
+        // Intersection de créneaux
+        if (debutMs < pFin && finMs > pDebut) {
+          qteEmprunteEspace += (Number(p.Quantite) || 1);
         }
+      });
 
-        function renderReferentLoans() {
-            const tbody = document.getElementById('referent-loans-tbody');
-            if (!isReferent) return;
-            const toValidate = recordsPrets.filter(p => p.Statut === 'En attente');
-            if (toValidate.length === 0) { tbody.innerHTML = '<tr><td colspan="5">Aucune demande en attente.</td></tr>'; return; }
+      const disponible = Math.max(0, item.Quantite - qteEmprunteEspace);
 
-            tbody.innerHTML = '';
-            toValidate.forEach(p => {
-                const mat = listMateriel.find(m => m.id === Number(p.Materiel)) || {};
-                const dem = mapUsers[p.Demandeur] || `Agent #${p.Demandeur}`;
-                tbody.innerHTML += `<tr><td>${dem}</td><td>${mat.nom || ''}</td><td>${p.Quantite}</td><td>${new Date(p.DebutPret).toLocaleDateString()}</td><td><button onclick="validerPret(${p.id}, 'Validé')">Valider</button></td></tr>`;
-            });
-        }
+      banner.style.display = 'block';
+      if (disponible === 0) {
+        banner.className = 'availability-banner avail-ko';
+        banner.textContent = `❌ Aucun exemplaire disponible sur ce créneau (0 / ${item.Quantite} libre).`;
+        submitBtn.disabled = true;
+      } else if (disponible < qteDemandee) {
+        banner.className = 'availability-banner avail-ko';
+        banner.textContent = `❌ Stock insuffisant : seulement ${disponible} exemplaire(s) disponible(s) pour ce créneau.`;
+        submitBtn.disabled = true;
+      } else {
+        banner.className = 'availability-banner avail-ok';
+        banner.textContent = `✅ Matériel disponible : ${disponible} exemplaire(s) libre(s) sur ${item.Quantite}.`;
+        submitBtn.disabled = false;
+      }
+    }
 
-        window.validerPret = async function(id, statut) {
-            const pretTable = await resolveTableName('PRET_MATERIEL');
-            await grist.docApi.applyUserActions([['UpdateRecord', pretTable || 'PRET_MATERIEL', id, { Statut: statut }]]);
-        };
-    </script>
+    async function enregistrerPret(event) {
+      event.preventDefault();
+      const debugBox = document.getElementById('debug-box');
+      debugBox.style.display = 'none';
+
+      if (!currentUserId) {
+        alert("Veuillez d'abord sélectionner votre profil dans la table Utilisateurs au-dessus.");
+        return;
+      }
+
+      const submitBtn = document.getElementById('submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '⏳ Enregistrement en cours…';
+
+      const payload = {
+        Materiel: Number(document.getElementById('select-materiel').value),
+        Quantite: Number(document.getElementById('quantite-demande').value),
+        Demandeur: currentUserId,
+        DateDemande: new Date().toISOString().split('T')[0],
+        DebutPret: new Date(document.getElementById('debut-pret').value).toISOString(),
+        FinPret: new Date(document.getElementById('fin-pret').value).toISOString(),
+        DetailsDemande: document.getElementById('details-demande').value.trim(),
+        Statut: 'En attente'
+      };
+
+      try {
+        await grist.docApi.applyUserActions([
+          ['AddRecord', 'PRET_MATERIEL', -1, payload]
+        ]);
+
+        alert('Demande de prêt enregistrée avec succès !');
+        document.getElementById('loan-form').reset();
+        document.getElementById('quantite-demande').value = 1;
+        document.getElementById('availability-box').style.display = 'none';
+      } catch (err) {
+        console.error("Erreur Grist :", err);
+        debugBox.style.display = 'block';
+        debugBox.innerText = "❌ ERREUR GRIST :\n" + (err.message || JSON.stringify(err, null, 2));
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '✔ Soumettre la demande de prêt';
+      }
+    }
+  </script>
 </body>
 </html>
