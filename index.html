@@ -206,7 +206,7 @@ function overlaps(start1, end1, start2, end2) {
 function reservationsConcernees(materielId, debut, fin) {
   return prets.filter(p =>
     Number(p.Materiel) === Number(materielId) &&
-    ["["En attente", "Validé", "En cours"].includes(p.Statut) &&
+    ["En attente", "Validé"].includes(p.Statut) &&
     p.DebutPret != null &&
     p.FinPret != null &&
     overlaps(
@@ -334,21 +334,21 @@ async function envoyerDemande() {
 
     // Ne jamais transmettre Demandeur, EmailCreateur,
     // ReferentMateriel ou Statut depuis le navigateur.
-await grist.docApi.applyUserActions([
-  [
-    "AddRecord",
-    TABLE_PRET,
-    null,
-    {
-      Materiel: id,
-      Quantite: q,
-      DebutPret: debut,
-      FinPret: fin,
-      DetailsDemande: details,
-      Statut: "En attente"
-    }
-  ]
-]);
+    await grist.docApi.applyUserActions([
+      [
+        "AddRecord",
+        TABLE_PRET,
+        null,
+        {
+          Materiel: id,
+  Quantite: q,
+  DebutPret: debut,
+  FinPret: fin,
+  DetailsDemande: details,
+  Statut: "En attente"
+        }
+      ]
+    ]);
 
     message.className = "ok";
     message.textContent =
