@@ -43,7 +43,7 @@
             align-items: center;
             gap: 10px;
             flex-grow: 1;
-            max-width: 500px;
+            max-width: 550px;
         }
         .role-tag {
             background: #e8f4fd;
@@ -53,6 +53,13 @@
             border-radius: 12px;
             font-size: 12px;
             font-weight: bold;
+            display: none;
+            white-space: nowrap;
+        }
+        .auto-auth-status {
+            font-size: 11px;
+            color: var(--success);
+            font-weight: 600;
             display: none;
         }
         
@@ -186,10 +193,15 @@
             <small style="color:#666;">Catalogue stock (MATERIEL) & Suivi des prêts (PRET_MATERIEL)</small>
         </div>
         <div class="user-selector">
-            <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent connecté :</label>
-            <select id="current-user-select">
-                <option value="">-- Chargement des agents... --</option>
-            </select>
+            <div style="flex-grow:1;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent :</label>
+                    <select id="current-user-select">
+                        <option value="">-- Chargement des agents... --</option>
+                    </select>
+                </div>
+                <div id="auto-auth-info" class="auto-auth-status">✓ Identifié automatiquement via votre session Grist</div>
+            </div>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
     </div>
@@ -315,25 +327,48 @@
         let mapUsers = {};
         let listUsers = [];
         let currentUserId = null;
+        let detectedGristEmail = null;
+
+        // Dictionnaire des vrais noms techniques (ID) des colonnes de PRET_MATERIEL
+        let pretCols = {
+            Materiel: 'Materiel',
+            Quantite: 'Quantite',
+            Demandeur: 'Demandeur',
+            Referent: 'Referent',
+            Service: 'Service',
+            DateDemande: 'DateDemande',
+            DateValidation: 'DateValidation',
+            DebutPret: 'DebutPret',
+            FinPret: 'FinPret',
+            DetailsDemande: 'DetailsDemande',
+            Statut: 'Statut',
+            ObservationRetourPreteur: 'ObservationRetourPreteur',
+            ObservationRetourDemandeur: 'ObservationRetourDemandeur'
+        };
 
         // Initialisation Grist
         grist.ready({
             requiredAccess: 'full'
         });
 
-        // Écoute des modifications de la table principale PRET_MATERIEL
+        // 1. Écoute de l'utilisateur connecté via la session Grist (authentification automatique)
+        grist.onUser(function(user) {
+            if (user && user.email) {
+                detectedGristEmail = user.email.trim().toLowerCase();
+                tryAutoSelectUser();
+            }
+        });
+
+        // 2. Écoute des enregistrements de la table PRET_MATERIEL
         grist.onRecords(function(records) {
             recordsPrets = records || [];
             refreshAllViews();
         });
 
-        // Recherche du nom exact d'une table dans Grist (insensible à la casse)
-        async function resolveTableName(targetName) {
-            const tables = await grist.docApi.listTables();
-            return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
+        function normalizeStr(s) {
+            return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
         }
 
-        // Nettoyage des valeurs renvoyées par Grist (évite les préfixes parasites comme "I" ou les tableaux)
         function cleanGristValue(val) {
             if (val === null || val === undefined) return '';
             if (Array.isArray(val)) {
@@ -344,14 +379,38 @@
             return str;
         }
 
-        // Chargement des tables de référence
+        async function resolveTableName(targetName) {
+            const tables = await grist.docApi.listTables();
+            return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
+        }
+
+        // Détection automatique des vrais noms techniques des colonnes d'une table Grist
+        function mapTableColumns(tableObj, expectedKeys) {
+            const actualKeys = Object.keys(tableObj).filter(k => k !== 'id' && k !== 'manualSort');
+            const mapped = {};
+            expectedKeys.forEach(exp => {
+                const normExp = normalizeStr(exp);
+                const found = actualKeys.find(act => normalizeStr(act) === normExp);
+                mapped[exp] = found || exp;
+            });
+            return mapped;
+        }
+
+        // Chargement des tables de référence et détection de structure
         async function loadAllReferenceData() {
             try {
-                // 1. Chargement de la table Utilisateurs
+                // A. Détection des colonnes réelles de PRET_MATERIEL pour garantir l'écriture des données
+                const pretTableName = await resolveTableName('PRET_MATERIEL');
+                if (pretTableName) {
+                    const pretData = await grist.docApi.fetchTable(pretTableName);
+                    pretCols = mapTableColumns(pretData, Object.keys(pretCols));
+                }
+
+                // B. Chargement de la table Utilisateurs
                 const usersTable = await resolveTableName('Utilisateurs');
                 if (!usersTable) {
                     const allTables = await grist.docApi.listTables();
-                    throw new Error(`Table Utilisateurs introuvable (tables existantes : ${allTables.join(', ')})`);
+                    throw new Error(`Table Utilisateurs introuvable (tables : ${allTables.join(', ')})`);
                 }
 
                 const usersData = await grist.docApi.fetchTable(usersTable);
@@ -359,9 +418,9 @@
                 listUsers = [];
                 if (usersData && usersData.id) {
                     const keys = Object.keys(usersData);
-                    const emailCol = keys.find(k => ['email', 'mail', 'utilisateur', 'nom'].includes(k.toLowerCase())) || 'Email';
-                    const refCol = keys.find(k => k.toLowerCase() === 'referentmateriel');
-                    const serviceCol = keys.find(k => k.toLowerCase() === 'service');
+                    const emailCol = keys.find(k => ['email', 'mail', 'utilisateur', 'nom'].includes(normalizeStr(k))) || 'Email';
+                    const refCol = keys.find(k => normalizeStr(k) === 'referentmateriel');
+                    const serviceCol = keys.find(k => normalizeStr(k) === 'service');
 
                     for (let i = 0; i < usersData.id.length; i++) {
                         const rawLabel = usersData[emailCol] ? cleanGristValue(usersData[emailCol][i]) : '';
@@ -378,26 +437,28 @@
                     }
                 }
                 populateUserSelect();
+                tryAutoSelectUser();
 
-                // 2. Chargement du catalogue MATERIEL
+                // C. Chargement du catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
+                    const matCols = mapTableColumns(matData, ['IdMateriel', 'Materiel', 'Categorie', 'Quantite', 'Referent', 'Service']);
                     mapMateriel = {};
                     listMateriel = [];
                     if (matData && matData.id) {
                         for (let i = 0; i < matData.id.length; i++) {
-                            const matName = matData.Materiel ? cleanGristValue(matData.Materiel[i]) : '';
+                            const matName = matData[matCols.Materiel] ? cleanGristValue(matData[matCols.Materiel][i]) : '';
                             if (!matName) continue;
 
                             const item = {
                                 id: matData.id[i],
-                                IdMateriel: matData.IdMateriel ? cleanGristValue(matData.IdMateriel[i]) : '',
+                                IdMateriel: matData[matCols.IdMateriel] ? cleanGristValue(matData[matCols.IdMateriel][i]) : '',
                                 Materiel: matName,
-                                Categorie: matData.Categorie ? cleanGristValue(matData.Categorie[i]) : '',
-                                Quantite: matData.Quantite !== undefined && matData.Quantite[i] !== null ? Number(matData.Quantite[i]) : 1,
-                                Referent: matData.Referent ? Number(matData.Referent[i]) : null,
-                                Service: matData.Service ? matData.Service[i] : null
+                                Categorie: matData[matCols.Categorie] ? cleanGristValue(matData[matCols.Categorie][i]) : '',
+                                Quantite: matData[matCols.Quantite] !== undefined && matData[matCols.Quantite][i] !== null ? Number(matData[matCols.Quantite][i]) : 1,
+                                Referent: matData[matCols.Referent] ? Number(matData[matCols.Referent][i]) : null,
+                                Service: matData[matCols.Service] ? matData[matCols.Service][i] : null
                             };
                             mapMateriel[item.id] = item;
                             listMateriel.push(item);
@@ -408,7 +469,7 @@
 
                 refreshAllViews();
             } catch (err) {
-                console.error("Erreur lors du chargement des tables de référence :", err);
+                console.error("Erreur lors du chargement :", err);
                 const select = document.getElementById('current-user-select');
                 select.innerHTML = `<option value="">⚠️ ${err.message}</option>`;
             }
@@ -427,15 +488,28 @@
             });
         }
 
+        // Sélection automatique de l'utilisateur si son email Grist correspond à une ligne de Utilisateurs
+        function tryAutoSelectUser() {
+            if (!detectedGristEmail || listUsers.length === 0) return;
+
+            const matchedUser = listUsers.find(u => u.email.trim().toLowerCase() === detectedGristEmail);
+            if (matchedUser) {
+                currentUserId = matchedUser.id;
+                const select = document.getElementById('current-user-select');
+                select.value = matchedUser.id;
+                document.getElementById('auto-auth-info').style.display = 'block';
+                updateReferentUI();
+                refreshAllViews();
+            }
+        }
+
         function populateCategoriesFromMateriel() {
             const catSelect = document.getElementById('filter-categorie');
             const currentCat = catSelect.value;
             const categoriesSet = new Set();
 
             listMateriel.forEach(item => {
-                if (item.Categorie) {
-                    categoriesSet.add(item.Categorie);
-                }
+                if (item.Categorie) categoriesSet.add(item.Categorie);
             });
 
             catSelect.innerHTML = '<option value="">Toutes les catégories</option>';
@@ -446,9 +520,7 @@
                 catSelect.appendChild(opt);
             });
 
-            if (categoriesSet.has(currentCat)) {
-                catSelect.value = currentCat;
-            }
+            if (categoriesSet.has(currentCat)) catSelect.value = currentCat;
         }
 
         function isCurrentUserReferent() {
@@ -461,6 +533,7 @@
 
         document.getElementById('current-user-select').addEventListener('change', function(e) {
             currentUserId = e.target.value ? Number(e.target.value) : null;
+            document.getElementById('auto-auth-info').style.display = 'none';
             updateReferentUI();
             refreshAllViews();
         });
@@ -493,7 +566,6 @@
         document.getElementById('debut-pret').addEventListener('change', checkAvailability);
         document.getElementById('fin-pret').addEventListener('change', checkAvailability);
 
-        // Liste déroulante "Matériel souhaité" épurée (sans rappel de la catégorie entre crochets)
         function populateMaterielSelect() {
             const catFilter = document.getElementById('filter-categorie').value;
             const select = document.getElementById('select-materiel');
@@ -511,13 +583,16 @@
                 }
             });
 
-            if (currentVal && mapMateriel[currentVal]) {
-                select.value = currentVal;
-            }
+            if (currentVal && mapMateriel[currentVal]) select.value = currentVal;
             checkAvailability();
         }
 
-        // Vérification de disponibilité avec message d'alerte explicite si indisponible
+        // Lecture sécurisée d'un champ d'un enregistrement PRET_MATERIEL selon les colonnes détectées
+        function getPretField(record, logicalKey) {
+            const actualCol = pretCols[logicalKey] || logicalKey;
+            return record[actualCol];
+        }
+
         function checkAvailability() {
             const matRowId = Number(document.getElementById('select-materiel').value);
             const qteDemandee = parseInt(document.getElementById('quantite-demande').value) || 1;
@@ -547,12 +622,18 @@
 
             let qteDejaPretee = 0;
             recordsPrets.forEach(pret => {
-                if (Number(pret.Materiel) !== matRowId) return;
-                if (!pret.DebutPret || !pret.FinPret) return;
-                if (pret.Statut === 'Refusé' || pret.Statut === 'Clôturé') return;
+                const pMat = Number(getPretField(pret, 'Materiel'));
+                const pDebut = getPretField(pret, 'DebutPret');
+                const pFin = getPretField(pret, 'FinPret');
+                const pStatut = getPretField(pret, 'Statut');
+                const pQte = getPretField(pret, 'Quantite');
+
+                if (pMat !== matRowId) return;
+                if (!pDebut || !pFin) return;
+                if (pStatut === 'Refusé' || pStatut === 'Clôturé') return;
                 
-                if (debut <= pret.FinPret && fin >= pret.DebutPret) {
-                    qteDejaPretee += (pret.Quantite ? Number(pret.Quantite) : 1);
+                if (debut <= pFin && fin >= pDebut) {
+                    qteDejaPretee += (pQte ? Number(pQte) : 1);
                 }
             });
 
@@ -574,7 +655,7 @@
             }
         }
 
-        // Enregistrement dans PRET_MATERIEL
+        // Enregistrement dans PRET_MATERIEL en utilisant les noms techniques exacts des colonnes
         document.getElementById('loan-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const feedback = document.getElementById('form-feedback');
@@ -593,25 +674,33 @@
             const todayStr = new Date().toISOString().split('T')[0];
             const autoValidate = isCurrentUserReferent() && document.getElementById('auto-validate-check').checked;
 
-            const payload = {
-                Materiel: matRowId,
-                Quantite: qteDemandee,
-                Demandeur: currentUserId,
-                Referent: itemCatalog.Referent || (isCurrentUserReferent() ? currentUserId : null),
-                Service: itemCatalog.Service || null,
-                DateDemande: todayStr,
-                DebutPret: document.getElementById('debut-pret').value,
-                FinPret: document.getElementById('fin-pret').value,
-                DetailsDemande: document.getElementById('details-demande').value.trim(),
-                Statut: autoValidate ? 'Validé' : 'En attente'
-            };
+            // Construction dynamique de l'objet avec les identifiants exacts de colonnes Grist
+            const payload = {};
+            payload[pretCols.Materiel] = matRowId;
+            payload[pretCols.Quantite] = qteDemandee;
+            payload[pretCols.Demandeur] = currentUserId;
+            payload[pretCols.DateDemande] = todayStr;
+            payload[pretCols.DebutPret] = document.getElementById('debut-pret').value;
+            payload[pretCols.FinPret] = document.getElementById('fin-pret').value;
+            payload[pretCols.DetailsDemande] = document.getElementById('details-demande').value.trim();
+            payload[pretCols.Statut] = autoValidate ? 'Validé' : 'En attente';
 
+            if (itemCatalog.Referent || isCurrentUserReferent()) {
+                payload[pretCols.Referent] = itemCatalog.Referent || currentUserId;
+            }
+            if (itemCatalog.Service) {
+                payload[pretCols.Service] = itemCatalog.Service;
+            }
             if (autoValidate) {
-                payload.DateValidation = todayStr;
+                payload[pretCols.DateValidation] = todayStr;
             }
 
             try {
-                await grist.selectedTable.create([payload]);
+                // On utilise docApi.applyUserActions ou selectedTable.create sur la table PRET_MATERIEL
+                const pretTableName = await resolveTableName('PRET_MATERIEL');
+                await grist.docApi.applyUserActions([
+                    ['AddRecord', pretTableName || 'PRET_MATERIEL', null, payload]
+                ]);
 
                 feedback.style.color = 'green';
                 feedback.textContent = autoValidate 
@@ -623,6 +712,7 @@
                 document.getElementById('char-count').textContent = '0';
                 document.getElementById('availability-box').style.display = 'none';
             } catch (err) {
+                console.error("Détail erreur écriture :", err);
                 feedback.style.color = 'red';
                 feedback.textContent = "Erreur lors de l'enregistrement : " + err.message;
             }
@@ -649,7 +739,7 @@
                 return;
             }
 
-            const myRecords = recordsPrets.filter(p => Number(p.Demandeur) === currentUserId);
+            const myRecords = recordsPrets.filter(p => Number(getPretField(p, 'Demandeur')) === currentUserId);
             if (myRecords.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="8">Aucune demande enregistrée à votre nom.</td></tr>';
                 return;
@@ -657,20 +747,21 @@
 
             tbody.innerHTML = '';
             myRecords.forEach(p => {
-                const matObj = mapMateriel[p.Materiel] || {};
-                const refId = p.Referent || matObj.Referent;
+                const matId = Number(getPretField(p, 'Materiel'));
+                const matObj = mapMateriel[matId] || {};
+                const refId = Number(getPretField(p, 'Referent')) || matObj.Referent;
                 const refEmail = refId && mapUsers[refId] ? mapUsers[refId].email : '-';
-                const obsVal = p.ObservationRetourDemandeur || '';
+                const obsVal = getPretField(p, 'ObservationRetourDemandeur') || '';
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${matObj.IdMateriel || '-'}</td>
                     <td><strong>${matObj.Materiel || 'Matériel inconnu'}</strong></td>
-                    <td>${p.Quantite || 1}</td>
-                    <td>Du ${p.DebutPret || '?'} au ${p.FinPret || '?'}</td>
+                    <td>${getPretField(p, 'Quantite') || 1}</td>
+                    <td>Du ${getPretField(p, 'DebutPret') || '?'} au ${getPretField(p, 'FinPret') || '?'}</td>
                     <td>${refEmail}</td>
-                    <td>${formatStatusBadge(p.Statut)}</td>
+                    <td>${formatStatusBadge(getPretField(p, 'Statut'))}</td>
                     <td>
-                        <input type="text" id="obs-dem-${p.id}" value="${obsVal.replace(/"/g, '&quot;')}" placeholder="État au retour...">
+                        <input type="text" id="obs-dem-${p.id}" value="${String(obsVal).replace(/"/g, '&quot;')}" placeholder="État au retour...">
                     </td>
                     <td>
                         <button type="button" class="btn-sm" onclick="saveDemandeurObs(${p.id})">Enregistrer</button>
@@ -685,10 +776,11 @@
             if (!currentUserId) return;
 
             const refRecords = recordsPrets.filter(p => {
-                const matObj = mapMateriel[p.Materiel];
+                const matId = Number(getPretField(p, 'Materiel'));
+                const matObj = mapMateriel[matId];
                 const isItemRef = matObj && matObj.Referent === currentUserId;
-                const isExplicitRef = Number(p.Referent) === currentUserId;
-                const isSelfRequestAsRef = Number(p.Demandeur) === currentUserId && isCurrentUserReferent();
+                const isExplicitRef = Number(getPretField(p, 'Referent')) === currentUserId;
+                const isSelfRequestAsRef = Number(getPretField(p, 'Demandeur')) === currentUserId && isCurrentUserReferent();
                 return isItemRef || isExplicitRef || isSelfRequestAsRef;
             });
 
@@ -699,19 +791,21 @@
 
             tbody.innerHTML = '';
             refRecords.forEach(p => {
-                const matObj = mapMateriel[p.Materiel] || {};
-                const demEmail = mapUsers[p.Demandeur] ? mapUsers[p.Demandeur].email : `Agent #${p.Demandeur}`;
-                const obsPret = p.ObservationRetourPreteur || '';
+                const matId = Number(getPretField(p, 'Materiel'));
+                const matObj = mapMateriel[matId] || {};
+                const demId = Number(getPretField(p, 'Demandeur'));
+                const demEmail = mapUsers[demId] ? mapUsers[demId].email : `Agent #${demId}`;
+                const obsPret = getPretField(p, 'ObservationRetourPreteur') || '';
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${demEmail}</td>
                     <td><strong>${matObj.Materiel || ''}</strong> (${matObj.IdMateriel || ''})</td>
-                    <td>${p.Quantite || 1}</td>
-                    <td>Du ${p.DebutPret || '?'} au ${p.FinPret || '?'}</td>
-                    <td>${p.DetailsDemande || ''}</td>
-                    <td>${formatStatusBadge(p.Statut)}</td>
+                    <td>${getPretField(p, 'Quantite') || 1}</td>
+                    <td>Du ${getPretField(p, 'DebutPret') || '?'} au ${getPretField(p, 'FinPret') || '?'}</td>
+                    <td>${getPretField(p, 'DetailsDemande') || ''}</td>
+                    <td>${formatStatusBadge(getPretField(p, 'Statut'))}</td>
                     <td>
-                        <input type="text" id="obs-pret-${p.id}" value="${obsPret.replace(/"/g, '&quot;')}" placeholder="Contrôle retour...">
+                        <input type="text" id="obs-pret-${p.id}" value="${String(obsPret).replace(/"/g, '&quot;')}" placeholder="Contrôle retour...">
                         <button type="button" class="btn-sm" style="margin-top:4px;" onclick="savePreteurObs(${p.id})">Noter</button>
                     </td>
                     <td>
@@ -723,14 +817,17 @@
             });
         }
 
+        // Actions de mise à jour dans PRET_MATERIEL
         window.decideLoan = async function(rowId, decision) {
             const todayStr = new Date().toISOString().split('T')[0];
+            const pretTableName = await resolveTableName('PRET_MATERIEL');
+            const fields = {};
+            fields[pretCols.Statut] = decision;
+            fields[pretCols.DateValidation] = todayStr;
             try {
-                await grist.selectedTable.update([{
-                    id: rowId,
-                    Statut: decision,
-                    DateValidation: todayStr
-                }]);
+                await grist.docApi.applyUserActions([
+                    ['UpdateRecord', pretTableName || 'PRET_MATERIEL', rowId, fields]
+                ]);
             } catch (err) {
                 alert("Erreur lors de la validation : " + err.message);
             }
@@ -738,11 +835,13 @@
 
         window.saveDemandeurObs = async function(rowId) {
             const val = document.getElementById(`obs-dem-${rowId}`).value;
+            const pretTableName = await resolveTableName('PRET_MATERIEL');
+            const fields = {};
+            fields[pretCols.ObservationRetourDemandeur] = val;
             try {
-                await grist.selectedTable.update([{
-                    id: rowId,
-                    ObservationRetourDemandeur: val
-                }]);
+                await grist.docApi.applyUserActions([
+                    ['UpdateRecord', pretTableName || 'PRET_MATERIEL', rowId, fields]
+                ]);
                 alert("Observation enregistrée.");
             } catch (err) {
                 alert("Erreur : " + err.message);
@@ -751,11 +850,13 @@
 
         window.savePreteurObs = async function(rowId) {
             const val = document.getElementById(`obs-pret-${rowId}`).value;
+            const pretTableName = await resolveTableName('PRET_MATERIEL');
+            const fields = {};
+            fields[pretCols.ObservationRetourPreteur] = val;
             try {
-                await grist.selectedTable.update([{
-                    id: rowId,
-                    ObservationRetourPreteur: val
-                }]);
+                await grist.docApi.applyUserActions([
+                    ['UpdateRecord', pretTableName || 'PRET_MATERIEL', rowId, fields]
+                ]);
                 alert("Observation prêteur enregistrée.");
             } catch (err) {
                 alert("Erreur : " + err.message);
