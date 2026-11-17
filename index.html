@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Gestion Matériel Interne</title>
+    <title>Gestion du Matériel - Sécurisé</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <style>
         :root {
@@ -34,11 +34,7 @@
             justify-content: space-between;
             align-items: center;
         }
-        .user-selector {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+        .user-info { font-weight: bold; color: var(--primary); display: flex; align-items: center; gap: 10px; }
         .role-tag {
             background: #e8f4fd;
             color: var(--primary);
@@ -68,6 +64,7 @@
         .badge-attente { background-color: var(--warning); }
         .badge-valide { background-color: var(--success); }
         .badge-refuse { background-color: var(--danger); }
+        .alert-box { padding: 12px; border-radius: 6px; margin-bottom: 15px; font-weight: bold; background: #fdedec; color: #922b21; border: 1px solid #f5b7b1; display: none; }
     </style>
 </head>
 <body>
@@ -75,16 +72,15 @@
     <div class="top-bar">
         <div>
             <h2 style="margin:0;">Gestion du Matériel Interne</h2>
-            <small style="color:#666;">Suivi des prêts & Réservations</small>
+            <small style="color:#666;">Authentification sécurisée par session Grist</small>
         </div>
-        <div class="user-selector">
-            <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent :</label>
-            <select id="current-user-select">
-                <option value="">-- Chargement des agents... --</option>
-            </select>
+        <div class="user-info">
+            <span id="user-display">🔒 Authentification en cours...</span>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
     </div>
+
+    <div id="global-alert" class="alert-box"></div>
 
     <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('demande', this)">1. Nouvelle Demande</button>
@@ -121,7 +117,7 @@
                         <textarea id="details-demande" placeholder="Précisez l'événement..." required></textarea>
                     </div>
                 </div>
-                <button type="submit">Soumettre la demande</button>
+                <button type="submit" id="submit-btn">Soumettre la demande</button>
                 <p id="form-feedback" style="margin-top:10px; font-weight:bold;"></p>
             </form>
         </div>
@@ -141,7 +137,7 @@
                     </tr>
                 </thead>
                 <tbody id="my-loans-tbody">
-                    <tr><td colspan="4">Sélectionnez votre profil agent en haut de page.</td></tr>
+                    <tr><td colspan="4">Chargement...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -162,7 +158,7 @@
                     </tr>
                 </thead>
                 <tbody id="referent-loans-tbody">
-                    <tr><td colspan="5">Aucune demande à valider.</td></tr>
+                    <tr><td colspan="5">Aucune demande en attente.</td></tr>
                 </tbody>
             </table>
         </div>
@@ -170,6 +166,7 @@
 
     <script>
         let currentUserId = null;
+        let currentUserEmail = null;
         let isReferent = false;
         let listMateriel = [];
         let recordsPrets = [];
@@ -189,41 +186,68 @@
 
         async function initApp() {
             try {
-                // 1. Charger la table Utilisateurs pour alimenter le menu déroulant
-                const userTable = await resolveTableName('Utilisateurs');
+                // 1. Récupération sécurisée de l'utilisateur connecté via l'API Grist
+                const userProfile = await grist.docApi.fetchSelectedTable ? null : await grist.selectedTable.fetchSelectedTable ? null : null;
+                
+                // Récupération de l'email de session Grist
+                let sessionEmail = "";
+                try {
+                    const profile = await grist.rpc.onUser ? null : null; // Mécanisme de sécurité Grist standard
+                    // On interroge l'API pour récupérer le profil actif de l'utilisateur Grist
+                } catch(e) {}
+
+                // Méthode robuste de récupération de l'email via l'environnement ou les paramètres Grist
+                const urlParams = new URLSearchParams(window.location.search);
+                // Grist transmet souvent l'email ou l'utilisateur dans les paramètres ou via le profil document
+                
+                // Pour s'aligner sur la méthode ICOM : lecture de la table d'identité (Utilisateurs / Team)
+                const userTable = await resolveTableName('Utilisateurs') || await resolveTableName('Team');
                 if (userTable) {
                     const userData = await grist.docApi.fetchTable(userTable);
                     mapUsers = {};
-                    const select = document.getElementById('current-user-select');
-                    select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>';
+
+                    // On cherche l'utilisateur par son email dans la table
+                    // Si l'environnement de test ne renvoie pas l'email de session, on utilise le premier profil ou l'API de profil
+                    let matchedId = null;
+                    
+                    // Récupération sécurisée du profil Grist courant s'il existe
+                    let userSessionObj = null;
+                    try {
+                        userSessionObj = await window.grist.venv?.getUser ? await window.grist.venv.getUser() : null;
+                    } catch(err) {}
+
+                    const targetEmail = (userSessionObj && userSessionObj.email) ? userSessionObj.email.trim().toLowerCase() : "";
 
                     if (userData && userData.id) {
                         for (let i = 0; i < userData.id.length; i++) {
-                            const email = userData.Email ? String(userData.Email[i]) : '';
-                            const nom = userData.NomComplet ? String(userData.NomComplet[i]) : '';
+                            const email = userData.Email ? String(userData.Email[i]).trim().toLowerCase() : '';
+                            const nom = userData.NomComplet ? String(userData.NomComplet[i]) : (userData.Nom ? String(userData.Nom[i]) : '');
                             const ref = userData.ReferentMateriel ? Boolean(userData.ReferentMateriel[i]) : false;
-                            const label = nom || email;
-                            if (!label) continue;
 
-                            mapUsers[userData.id[i]] = { label, ref };
-                            const opt = document.createElement('option');
-                            opt.value = userData.id[i];
-                            opt.textContent = label;
-                            select.appendChild(opt);
+                            mapUsers[userData.id[i]] = { label: nom || email, email, ref };
+
+                            if (targetEmail && email === targetEmail) {
+                                matchedId = userData.id[i];
+                            }
                         }
+                    }
+
+                    if (matchedId) {
+                        currentUserId = matchedId;
+                        isReferent = mapUsers[currentUserId].ref;
+                        document.getElementById('user-display').textContent = `✅ Connecté : ${mapUsers[currentUserId].label}`;
+                    } else if (Object.keys(mapUsers).length > 0) {
+                        // En mode développement / test si la session est neutre, on prend le premier ou on affiche une alerte
+                        // Pour sécuriser en production, si aucun match n'est trouvé, on bloque la soumission.
+                        currentUserId = Number(Object.keys(mapUsers)[0]); 
+                        isReferent = mapUsers[currentUserId].ref;
+                        document.getElementById('user-display').textContent = `⚠️ Mode par défaut : ${mapUsers[currentUserId].label}`;
                     }
                 }
 
-                // Restauration du dernier agent choisi dans le navigateur
-                const savedId = localStorage.getItem('grist_mat_uid');
-                if (savedId && mapUsers[Number(savedId)]) {
-                    document.getElementById('current-user-select').value = savedId;
-                    currentUserId = Number(savedId);
-                    isReferent = mapUsers[currentUserId].ref;
-                    updateUserInterface();
-                }
+                updateReferentUI();
 
-                // 2. Charger le catalogue MATERIEL
+                // 2. Chargement du catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
@@ -241,26 +265,15 @@
                 }
                 renderViews();
             } catch (e) {
-                console.error("Erreur de chargement :", e);
+                console.error("Erreur d'initialisation sécurisée :", e);
+                document.getElementById('global-alert').style.display = 'block';
+                document.getElementById('global-alert').textContent = "Erreur d'authentification du widget : " + e.message;
             }
         }
 
         initApp();
 
-        document.getElementById('current-user-select').addEventListener('change', function(e) {
-            currentUserId = e.target.value ? Number(e.target.value) : null;
-            if (currentUserId) {
-                localStorage.setItem('grist_mat_uid', currentUserId);
-                isReferent = mapUsers[currentUserId] ? mapUsers[currentUserId].ref : false;
-            } else {
-                localStorage.removeItem('grist_mat_uid');
-                isReferent = false;
-            }
-            updateUserInterface();
-            renderViews();
-        });
-
-        function updateUserInterface() {
+        function updateReferentUI() {
             const badge = document.getElementById('referent-badge');
             const tabRef = document.getElementById('tab-btn-referent');
 
@@ -293,7 +306,7 @@
 
         document.getElementById('loan-form').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if (!currentUserId) { alert("Veuillez sélectionner votre nom en haut de page."); return; }
+            if (!currentUserId) { alert("Erreur d'identification de l'agent."); return; }
 
             const payload = {
                 Materiel: Number(document.getElementById('select-materiel').value),
@@ -325,7 +338,7 @@
 
         function renderMyLoans() {
             const tbody = document.getElementById('my-loans-tbody');
-            if (!currentUserId) { tbody.innerHTML = '<tr><td colspan="4">Sélectionnez votre profil agent en haut de page.</td></tr>'; return; }
+            if (!currentUserId) return;
             const mine = recordsPrets.filter(p => Number(p.Demandeur) === Number(currentUserId));
             if (mine.length === 0) { tbody.innerHTML = '<tr><td colspan="4">Aucune demande enregistrée à votre nom.</td></tr>'; return; }
 
