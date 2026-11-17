@@ -250,6 +250,7 @@
                     </div>
                 </div>
 
+                <!-- Message dynamique de disponibilité ou d'indisponibilité -->
                 <div id="availability-box" class="availability-banner"></div>
 
                 <button type="submit" id="submit-btn">Enregistrer la demande de prêt</button>
@@ -308,17 +309,16 @@
 
     <script>
         // États globaux
-        let recordsPrets = [];      // Enregistrements de PRET_MATERIEL
-        let mapMateriel = {};       // id (rowId Grist) -> { id, IdMateriel, Materiel, Categorie, Quantite, Referent, Service }
+        let recordsPrets = [];
+        let mapMateriel = {};
         let listMateriel = [];
-        let mapUsers = {};          // id -> { id, email, service, referentMateriel }
+        let mapUsers = {};
         let listUsers = [];
         let currentUserId = null;
 
-        // Initialisation Grist (widget lié à la table PRET_MATERIEL)
+        // Initialisation Grist
         grist.ready({
-            requiredAccess: 'full',
-            requiredTableAccess: ['PRET_MATERIEL', 'MATERIEL', 'Utilisateurs']
+            requiredAccess: 'full'
         });
 
         // Écoute des modifications de la table principale PRET_MATERIEL
@@ -327,22 +327,49 @@
             refreshAllViews();
         });
 
-        // Chargement des tables de référence (Utilisateurs et MATERIEL)
+        // Recherche du nom exact d'une table dans Grist (insensible à la casse)
+        async function resolveTableName(targetName) {
+            const tables = await grist.docApi.listTables();
+            return tables.find(t => t.toLowerCase() === targetName.toLowerCase()) || null;
+        }
+
+        // Nettoyage des valeurs renvoyées par Grist (évite les préfixes parasites comme "I" ou les tableaux)
+        function cleanGristValue(val) {
+            if (val === null || val === undefined) return '';
+            if (Array.isArray(val)) {
+                return val.length > 1 ? String(val[1]).trim() : '';
+            }
+            const str = String(val).trim();
+            if (str === 'null' || str === 'undefined' || str === 'I') return '';
+            return str;
+        }
+
+        // Chargement des tables de référence
         async function loadAllReferenceData() {
             try {
-                // 1. Chargement de la table "Utilisateurs" (avec booléen ReferentMateriel)
-                const usersData = await grist.docApi.fetchTable('Utilisateurs');
+                // 1. Chargement de la table Utilisateurs
+                const usersTable = await resolveTableName('Utilisateurs');
+                if (!usersTable) {
+                    const allTables = await grist.docApi.listTables();
+                    throw new Error(`Table Utilisateurs introuvable (tables existantes : ${allTables.join(', ')})`);
+                }
+
+                const usersData = await grist.docApi.fetchTable(usersTable);
                 mapUsers = {};
                 listUsers = [];
                 if (usersData && usersData.id) {
-                    const emailCol = Object.keys(usersData).find(k => ['email', 'mail', 'utilisateur', 'nom'].includes(k.toLowerCase())) || 'Email';
-                    const refCol = Object.keys(usersData).find(k => k.toLowerCase() === 'referentmateriel');
-                    const serviceCol = Object.keys(usersData).find(k => k.toLowerCase() === 'service');
+                    const keys = Object.keys(usersData);
+                    const emailCol = keys.find(k => ['email', 'mail', 'utilisateur', 'nom'].includes(k.toLowerCase())) || 'Email';
+                    const refCol = keys.find(k => k.toLowerCase() === 'referentmateriel');
+                    const serviceCol = keys.find(k => k.toLowerCase() === 'service');
 
                     for (let i = 0; i < usersData.id.length; i++) {
+                        const rawLabel = usersData[emailCol] ? cleanGristValue(usersData[emailCol][i]) : '';
+                        if (!rawLabel) continue;
+
                         const u = {
                             id: usersData.id[i],
-                            email: usersData[emailCol] ? usersData[emailCol][i] : `Agent #${usersData.id[i]}`,
+                            email: rawLabel,
                             service: serviceCol && usersData[serviceCol] ? usersData[serviceCol][i] : null,
                             referentMateriel: refCol && usersData[refCol] ? Boolean(usersData[refCol][i]) : false
                         };
@@ -352,32 +379,38 @@
                 }
                 populateUserSelect();
 
-                // 2. Chargement du catalogue "MATERIEL" (Categorie en Choix unique = texte direct)
-                const matData = await grist.docApi.fetchTable('MATERIEL');
-                mapMateriel = {};
-                listMateriel = [];
-                if (matData && matData.id) {
-                    for (let i = 0; i < matData.id.length; i++) {
-                        const item = {
-                            id: matData.id[i],
-                            IdMateriel: matData.IdMateriel ? matData.IdMateriel[i] : '',
-                            Materiel: matData.Materiel ? matData.Materiel[i] : '',
-                            Categorie: matData.Categorie ? String(matData.Categorie[i]).trim() : '',
-                            Quantite: matData.Quantite !== undefined && matData.Quantite[i] !== null ? Number(matData.Quantite[i]) : 1,
-                            Referent: matData.Referent ? Number(matData.Referent[i]) : null,
-                            Service: matData.Service ? matData.Service[i] : null
-                        };
-                        mapMateriel[item.id] = item;
-                        listMateriel.push(item);
+                // 2. Chargement du catalogue MATERIEL
+                const matTable = await resolveTableName('MATERIEL');
+                if (matTable) {
+                    const matData = await grist.docApi.fetchTable(matTable);
+                    mapMateriel = {};
+                    listMateriel = [];
+                    if (matData && matData.id) {
+                        for (let i = 0; i < matData.id.length; i++) {
+                            const matName = matData.Materiel ? cleanGristValue(matData.Materiel[i]) : '';
+                            if (!matName) continue;
+
+                            const item = {
+                                id: matData.id[i],
+                                IdMateriel: matData.IdMateriel ? cleanGristValue(matData.IdMateriel[i]) : '',
+                                Materiel: matName,
+                                Categorie: matData.Categorie ? cleanGristValue(matData.Categorie[i]) : '',
+                                Quantite: matData.Quantite !== undefined && matData.Quantite[i] !== null ? Number(matData.Quantite[i]) : 1,
+                                Referent: matData.Referent ? Number(matData.Referent[i]) : null,
+                                Service: matData.Service ? matData.Service[i] : null
+                            };
+                            mapMateriel[item.id] = item;
+                            listMateriel.push(item);
+                        }
                     }
+                    populateCategoriesFromMateriel();
                 }
 
-                populateCategoriesFromMateriel();
                 refreshAllViews();
             } catch (err) {
                 console.error("Erreur lors du chargement des tables de référence :", err);
                 const select = document.getElementById('current-user-select');
-                select.innerHTML = `<option value="">⚠️ Erreur : ${err.message}</option>`;
+                select.innerHTML = `<option value="">⚠️ ${err.message}</option>`;
             }
         }
 
@@ -386,24 +419,21 @@
         function populateUserSelect() {
             const select = document.getElementById('current-user-select');
             select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>';
-            listUsers.forEach(u => {
-                if (u.email) {
-                    const opt = document.createElement('option');
-                    opt.value = u.id;
-                    opt.textContent = u.email;
-                    select.appendChild(opt);
-                }
+            listUsers.sort((a, b) => a.email.localeCompare(b.email)).forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u.id;
+                opt.textContent = u.email;
+                select.appendChild(opt);
             });
         }
 
-        // Extraction dynamique des choix uniques présents dans MATERIEL.Categorie
         function populateCategoriesFromMateriel() {
             const catSelect = document.getElementById('filter-categorie');
             const currentCat = catSelect.value;
             const categoriesSet = new Set();
 
             listMateriel.forEach(item => {
-                if (item.Categorie && item.Categorie !== 'null' && item.Categorie !== 'undefined') {
+                if (item.Categorie) {
                     categoriesSet.add(item.Categorie);
                 }
             });
@@ -463,6 +493,7 @@
         document.getElementById('debut-pret').addEventListener('change', checkAvailability);
         document.getElementById('fin-pret').addEventListener('change', checkAvailability);
 
+        // Liste déroulante "Matériel souhaité" épurée (sans rappel de la catégorie entre crochets)
         function populateMaterielSelect() {
             const catFilter = document.getElementById('filter-categorie').value;
             const select = document.getElementById('select-materiel');
@@ -474,8 +505,8 @@
                 if (!catFilter || item.Categorie === catFilter) {
                     const opt = document.createElement('option');
                     opt.value = item.id;
-                    const catLabel = item.Categorie && item.Categorie !== 'null' ? ` [${item.Categorie}]` : '';
-                    opt.textContent = `${item.IdMateriel} - ${item.Materiel}${catLabel} (Stock : ${item.Quantite})`;
+                    const prefix = item.IdMateriel ? `${item.IdMateriel} - ` : '';
+                    opt.textContent = `${prefix}${item.Materiel} (Stock : ${item.Quantite})`;
                     select.appendChild(opt);
                 }
             });
@@ -486,7 +517,7 @@
             checkAvailability();
         }
 
-        // Calcul dynamique de la disponibilité en croisant MATERIEL.Quantite et PRET_MATERIEL.Quantite
+        // Vérification de disponibilité avec message d'alerte explicite si indisponible
         function checkAvailability() {
             const matRowId = Number(document.getElementById('select-materiel').value);
             const qteDemandee = parseInt(document.getElementById('quantite-demande').value) || 1;
@@ -497,6 +528,7 @@
 
             if (!matRowId || !debut || !fin) {
                 banner.style.display = 'none';
+                submitBtn.disabled = false;
                 return;
             }
 
@@ -527,18 +559,22 @@
             const qteDisponible = Math.max(0, stockTotal - qteDejaPretee);
 
             banner.style.display = 'block';
-            if (qteDisponible >= qteDemandee) {
+            if (qteDisponible === 0) {
+                banner.className = 'availability-banner avail-ko';
+                banner.textContent = `❌ Aucun matériel disponible sur les dates demandées (${itemCatalog.Materiel} : 0/${stockTotal} libre).`;
+                submitBtn.disabled = true;
+            } else if (qteDisponible < qteDemandee) {
+                banner.className = 'availability-banner avail-ko';
+                banner.textContent = `❌ Stock insuffisant sur cette période : seulement ${qteDisponible} exemplaire(s) disponible(s) sur ${stockTotal} (vous en demandez ${qteDemandee}).`;
+                submitBtn.disabled = true;
+            } else {
                 banner.className = 'availability-banner avail-ok';
                 banner.textContent = `✅ Disponible : ${qteDisponible} exemplaire(s) libre(s) sur ${stockTotal} pour cette période.`;
                 submitBtn.disabled = false;
-            } else {
-                banner.className = 'availability-banner avail-ko';
-                banner.textContent = `❌ Stock insuffisant : Seulement ${qteDisponible} exemplaire(s) disponible(s) sur ${stockTotal} (vous en demandez ${qteDemandee}).`;
-                submitBtn.disabled = true;
             }
         }
 
-        // Enregistrement de la demande dans PRET_MATERIEL
+        // Enregistrement dans PRET_MATERIEL
         document.getElementById('loan-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const feedback = document.getElementById('form-feedback');
@@ -687,7 +723,6 @@
             });
         }
 
-        // Actions de mise à jour dans PRET_MATERIEL
         window.decideLoan = async function(rowId, decision) {
             const todayStr = new Date().toISOString().split('T')[0];
             try {
