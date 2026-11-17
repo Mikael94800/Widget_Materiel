@@ -201,7 +201,7 @@
                         <option value="">-- Sélectionnez votre nom --</option>
                     </select>
                 </div>
-                <div id="auto-auth-info" class="auto-auth-status">✓ Identifié automatiquement</div>
+                <div id="auto-auth-info" class="auto-auth-status">✓ Mémorisé sur cet appareil</div>
             </div>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
@@ -329,10 +329,14 @@
 
         grist.ready({ requiredAccess: 'full' });
 
-        // Utilisation de grist.onUser exactement comme sur le widget ICOM fonctionnel
+        // Tentative de récupération automatique via grist.onUser() couplée au stockage local
         grist.onUser(function(user) {
-            if (user) {
-                matchUserFromSession(user);
+            if (user && user.email) {
+                const sessionEmail = user.email.trim().toLowerCase();
+                const matched = listUsers.find(u => u.email === sessionEmail || u.email.includes(sessionEmail));
+                if (matched) {
+                    setConnectedUser(matched.id, true);
+                }
             }
         });
 
@@ -411,6 +415,12 @@
                 }
                 populateUserSelect();
 
+                // Restauration de l'utilisateur mémorisé dans le navigateur
+                const savedUserId = localStorage.getItem('grist_materiel_userid');
+                if (savedUserId && mapUsers[Number(savedUserId)]) {
+                    setConnectedUser(Number(savedUserId), true);
+                }
+
                 // 2. Chargement du catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
@@ -456,47 +466,30 @@
             });
         }
 
-        // Correspondance robuste inspirée de l'ICOM (teste l'email, le nom complet, ou le nom d'affichage Grist)
-        function matchUserFromSession(user) {
-            if (listUsers.length === 0) return;
+        function setConnectedUser(userId, isAuto = false) {
+            currentUserId = userId;
+            const select = document.getElementById('current-user-select');
+            if (select) select.value = userId;
 
-            const emailSes = (user.email || '').trim().toLowerCase();
-            const nameSes = (user.name || '').trim().toLowerCase();
-
-            let matched = listUsers.find(u => {
-                if (emailSes && (u.email === emailSes || u.email.includes(emailSes) || emailSes.includes(u.email))) return true;
-                if (nameSes && (u.nomComplet === nameSes || u.nomComplet.includes(nameSes) || nameSes.includes(u.nomComplet))) return true;
-                return false;
-            });
-
-            if (matched) {
-                currentUserId = matched.id;
-                document.getElementById('current-user-select').value = matched.id;
-                document.getElementById('auto-auth-info').style.display = 'block';
-                updateReferentUI();
-                refreshAllViews();
+            if (userId) {
+                localStorage.setItem('grist_materiel_userid', userId);
+                if (isAuto) {
+                    document.getElementById('auto-auth-info').style.display = 'block';
+                }
+            } else {
+                localStorage.removeItem('grist_materiel_userid');
+                document.getElementById('auto-auth-info').style.display = 'none';
             }
+
+            updateReferentUI();
+            refreshAllViews();
         }
 
-        function populateCategoriesFromMateriel() {
-            const catSelect = document.getElementById('filter-categorie');
-            const currentCat = catSelect.value;
-            const categoriesSet = new Set();
-
-            listMateriel.forEach(item => {
-                if (item.Categorie) categoriesSet.add(item.Categorie);
-            });
-
-            catSelect.innerHTML = '<option value="">Toutes les catégories</option>';
-            Array.from(categoriesSet).sort().forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = cat;
-                catSelect.appendChild(opt);
-            });
-
-            if (categoriesSet.has(currentCat)) catSelect.value = currentCat;
-        }
+        document.getElementById('current-user-select').addEventListener('change', function(e) {
+            const val = e.target.value ? Number(e.target.value) : null;
+            document.getElementById('auto-auth-info').style.display = 'none';
+            setConnectedUser(val, false);
+        });
 
         function isCurrentUserReferent() {
             if (!currentUserId) return false;
@@ -505,13 +498,6 @@
             const isAssignedToItem = listMateriel.some(m => m.Referents.includes(currentUserId));
             return hasFlag || isAssignedToItem;
         }
-
-        document.getElementById('current-user-select').addEventListener('change', function(e) {
-            currentUserId = e.target.value ? Number(e.target.value) : null;
-            document.getElementById('auto-auth-info').style.display = 'none';
-            updateReferentUI();
-            refreshAllViews();
-        });
 
         function updateReferentUI() {
             const isRef = isCurrentUserReferent();
