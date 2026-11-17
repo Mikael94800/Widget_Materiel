@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Gestion Matériel - Autonome & Sécurisé</title>
+    <title>Gestion Matériel - Autonome</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <style>
         :root {
@@ -76,10 +76,10 @@
     <div class="top-bar">
         <div>
             <h2 style="margin:0;">Gestion du Matériel Interne</h2>
-            <small style="color:#666;">Authentification automatique par session</small>
+            <small style="color:#666;">Authentification automatique</small>
         </div>
         <div class="user-info">
-            <span id="user-display">🔒 Identification en cours...</span>
+            <span id="user-display">🔒 Identification de l'agent...</span>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
     </div>
@@ -185,7 +185,6 @@
 
         grist.ready({ requiredAccess: 'full' });
 
-        // Écoute de la table PRET_MATERIEL en temps réel
         grist.onRecords(function(records) {
             recordsPrets = records || [];
             renderViews();
@@ -198,18 +197,19 @@
 
         async function initApp() {
             try {
-                // 1. Récupération de l'e-mail de l'utilisateur connecté via l'API Grist
+                // 1. Récupération robuste de l'utilisateur connecté via l'API Grist
                 let sessionEmail = "";
                 try {
-                    const user = await grist.user;
+                    // Méthode officielle de l'API Grist pour l'utilisateur de session
+                    const user = await grist.userman.getCurrentUser();
                     if (user && user.email) {
                         sessionEmail = user.email.trim().toLowerCase();
                     }
                 } catch(e) {
-                    console.warn("Impossible de récupérer grist.user directement :", e);
+                    console.warn("grist.userman non disponible, essai alternatif...", e);
                 }
 
-                // 2. Charger la table des utilisateurs pour faire correspondre l'e-mail de session
+                // 2. Charger la table des utilisateurs
                 const userTable = await resolveTableName('Utilisateurs');
                 if (userTable) {
                     const userData = await grist.docApi.fetchTable(userTable);
@@ -224,7 +224,7 @@
 
                             mapUsers[id] = { nom, email, ref };
 
-                            // Appariement strict par e-mail
+                            // Si l'e-mail de session correspond exactement à la ligne
                             if (sessionEmail && email === sessionEmail) {
                                 currentUserId = id;
                                 isReferent = ref;
@@ -233,8 +233,8 @@
                     }
                 }
 
-                // Si l'e-mail de session n'a pas pu être capturé (mode test ou restrictions), 
-                // on vérifie si la table ne contient qu'une seule ligne (filtrée par les règles d'accès Grist)
+                // Si l'e-mail de session n'a pas pu être récupéré par l'API mais que les règles d'accès 
+                // ne renvoient qu'une seule ligne (filtrée par les propriétés utilisateur Grist), on la prend.
                 if (!currentUserId && Object.keys(mapUsers).length === 1) {
                     const singleId = Object.keys(mapUsers)[0];
                     currentUserId = Number(singleId);
@@ -254,8 +254,9 @@
                     }
                 } else {
                     document.getElementById('user-display').textContent = "⚠️ Agent non reconnu.";
-                    document.getElementById('global-alert').style.display = 'block';
-                    document.getElementById('global-alert').textContent = `Votre e-mail de session (${sessionEmail || 'inconnu'}) ne correspond à aucun profil dans la table Utilisateurs, ou les règles d'accès restreignent l'accès.`;
+                    const alertBox = document.getElementById('global-alert');
+                    alertBox.style.display = 'block';
+                    alertBox.textContent = `Impossible de lier votre session (${sessionEmail || 'e-mail non détecté'}) à la table Utilisateurs. Vérifiez que votre e-mail Grist est rigoureusement identique à celui de la table Utilisateurs.`;
                 }
 
                 // 3. Charger le catalogue MATERIEL
