@@ -38,10 +38,12 @@
             justify-content: space-between;
             gap: 15px;
         }
-        .user-info {
+        .user-selector {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
+            flex-grow: 1;
+            max-width: 550px;
         }
         .role-tag {
             background: #e8f4fd;
@@ -53,11 +55,6 @@
             font-weight: bold;
             display: none;
             white-space: nowrap;
-        }
-        .auth-status {
-            font-size: 13px;
-            color: var(--primary);
-            font-weight: 600;
         }
         
         .tabs {
@@ -189,10 +186,11 @@
             <h2 style="margin:0;">Gestion du Matériel Interne</h2>
             <small style="color:#666;">Catalogue stock (MATERIEL) & Suivi des prêts (PRET_MATERIEL)</small>
         </div>
-        <div class="user-info">
-            <div>
-                <div id="user-display-name" class="auth-status">Agent : Chargement...</div>
-            </div>
+        <div class="user-selector">
+            <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent connecté :</label>
+            <select id="current-user-select">
+                <option value="">-- Sélectionnez votre nom --</option>
+            </select>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
     </div>
@@ -279,7 +277,7 @@
                     </tr>
                 </thead>
                 <tbody id="my-loans-tbody">
-                    <tr><td colspan="8">Chargement...</td></tr>
+                    <tr><td colspan="8">Sélectionnez votre profil agent en haut de page.</td></tr>
                 </tbody>
             </table>
         </div>
@@ -318,20 +316,6 @@
         let currentUserId = null;
 
         grist.ready({ requiredAccess: 'full' });
-
-        // 1. Double écoute comme sur le widget ICOM : récupération via la session et la table active
-        grist.onUser(function(user) {
-            if (user && user.email) {
-                matchUser(user.email, user.name);
-            }
-        });
-
-        grist.onRecord(function(record) {
-            // Si le widget est placé en vue liée sur la table Utilisateurs, l'agent est identifié instantanément
-            if (record && record.id) {
-                setAuthenticatedUser(record.id, record.NomComplet || record.Email || `Agent #${record.id}`);
-            }
-        });
 
         grist.onRecords(function(records) {
             recordsPrets = records || [];
@@ -381,7 +365,7 @@
 
         async function initApp() {
             try {
-                // A. Chargement de la table Utilisateurs
+                // 1. Chargement de la table Utilisateurs pour le menu déroulant d'identification
                 const usersTable = await resolveTableName('Utilisateurs');
                 if (usersTable) {
                     const usersData = await grist.docApi.fetchTable(usersTable);
@@ -397,28 +381,16 @@
                             const u = {
                                 id: usersData.id[i],
                                 label: label,
-                                email: emailVal.toLowerCase(),
-                                nomComplet: nomVal.toLowerCase(),
                                 referentMateriel: usersData.ReferentMateriel ? Boolean(usersData.ReferentMateriel[i]) : false
                             };
                             mapUsers[u.id] = u;
                             listUsers.push(u);
                         }
                     }
+                    populateUserSelect();
                 }
 
-                // S'il y a des utilisateurs, on active un repli par défaut (le premier) si la session tarde
-                if (listUsers.length > 0 && !currentUserId) {
-                    // On cherche dans le stockage local s'il y a un agent mémorisé
-                    const savedId = localStorage.getItem('grist_mat_uid');
-                    if (savedId && mapUsers[Number(savedId)]) {
-                        setAuthenticatedUser(Number(savedId), mapUsers[Number(savedId)].label);
-                    } else {
-                        setAuthenticatedUser(listUsers[0].id, listUsers[0].label + " (Par défaut)");
-                    }
-                }
-
-                // B. Chargement du catalogue MATERIEL
+                // 2. Chargement du catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
@@ -445,6 +417,14 @@
                     populateMaterielSelect();
                 }
 
+                // Restauration automatique du dernier agent sélectionné sur ce navigateur
+                const savedId = localStorage.getItem('grist_mat_uid');
+                if (savedId && mapUsers[Number(savedId)]) {
+                    document.getElementById('current-user-select').value = savedId;
+                    currentUserId = Number(savedId);
+                    updateReferentUI();
+                }
+
                 refreshAllViews();
             } catch (err) {
                 console.error("Erreur initialisation :", err);
@@ -453,50 +433,27 @@
 
         initApp();
 
-        function matchUser(emailSes, nameSes) {
-            if (listUsers.length === 0) return;
-            emailSes = (emailSes || '').toLowerCase();
-            nameSes = (nameSes || '').toLowerCase();
-
-            const matched = listUsers.find(u => {
-                if (emailSes && (u.email === emailSes || u.email.includes(emailSes))) return true;
-                if (nameSes && (u.nomComplet === nameSes || u.nomComplet.includes(nameSes) || nameSes.includes(u.nomComplet))) return true;
-                return false;
+        function populateUserSelect() {
+            const select = document.getElementById('current-user-select');
+            select.innerHTML = '<option value="">-- Sélectionnez votre nom --</option>';
+            listUsers.sort((a, b) => a.label.localeCompare(b.label)).forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u.id;
+                opt.textContent = u.label;
+                select.appendChild(opt);
             });
-
-            if (matched) {
-                setAuthenticatedUser(matched.id, matched.label);
-            }
         }
 
-        function setAuthenticatedUser(id, label) {
-            currentUserId = id;
-            localStorage.setItem('grist_mat_uid', id);
-            const el = document.getElementById('user-display-name');
-            if (el) el.textContent = `✓ Agent : ${label}`;
+        document.getElementById('current-user-select').addEventListener('change', function(e) {
+            currentUserId = e.target.value ? Number(e.target.value) : null;
+            if (currentUserId) {
+                localStorage.setItem('grist_mat_uid', currentUserId);
+            } else {
+                localStorage.removeItem('grist_mat_uid');
+            }
             updateReferentUI();
             refreshAllViews();
-        }
-
-        function populateCategoriesFromMateriel() {
-            const catSelect = document.getElementById('filter-categorie');
-            const currentCat = catSelect.value;
-            const categoriesSet = new Set();
-
-            listMateriel.forEach(item => {
-                if (item.Categorie) categoriesSet.add(item.Categorie);
-            });
-
-            catSelect.innerHTML = '<option value="">Toutes les catégories</option>';
-            Array.from(categoriesSet).sort().forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = cat;
-                catSelect.appendChild(opt);
-            });
-
-            if (categoriesSet.has(currentCat)) catSelect.value = currentCat;
-        }
+        });
 
         function isCurrentUserReferent() {
             if (!currentUserId) return false;
@@ -623,7 +580,7 @@
 
             if (!currentUserId) {
                 feedback.style.color = 'red';
-                feedback.textContent = "Utilisateur non identifié. Veuillez patienter ou recharger la page.";
+                feedback.textContent = "Veuillez sélectionner votre nom en haut de page avant de réserver.";
                 return;
             }
 
@@ -692,7 +649,7 @@
         function renderMyLoans() {
             const tbody = document.getElementById('my-loans-tbody');
             if (!currentUserId) {
-                tbody.innerHTML = '<tr><td colspan="8">En attente d\'identification...</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8">Veuillez sélectionner votre nom en haut de page.</td></tr>';
                 return;
             }
 
