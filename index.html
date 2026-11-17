@@ -198,10 +198,10 @@
                 <div style="display:flex; align-items:center; gap:8px;">
                     <label for="current-user-select" style="margin:0; white-space:nowrap;">Agent :</label>
                     <select id="current-user-select">
-                        <option value="">-- Chargement des agents... --</option>
+                        <option value="">-- Sélectionnez votre nom --</option>
                     </select>
                 </div>
-                <div id="auto-auth-info" class="auto-auth-status">✓ Identifié automatiquement via Grist</div>
+                <div id="auto-auth-info" class="auto-auth-status">✓ Identifié automatiquement</div>
             </div>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
@@ -326,15 +326,13 @@
         let mapUsers = {};
         let listUsers = [];
         let currentUserId = null;
-        let gristSessionEmail = null;
 
         grist.ready({ requiredAccess: 'full' });
 
-        // Récupération de l'email de session Grist
+        // Utilisation de grist.onUser exactement comme sur le widget ICOM fonctionnel
         grist.onUser(function(user) {
-            if (user && user.email) {
-                gristSessionEmail = user.email.trim().toLowerCase();
-                tryAutoSelectUser();
+            if (user) {
+                matchUserFromSession(user);
             }
         });
 
@@ -412,7 +410,6 @@
                     }
                 }
                 populateUserSelect();
-                tryAutoSelectUser();
 
                 // 2. Chargement du catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
@@ -459,19 +456,22 @@
             });
         }
 
-        function tryAutoSelectUser() {
-            if (!gristSessionEmail || listUsers.length === 0) return;
+        // Correspondance robuste inspirée de l'ICOM (teste l'email, le nom complet, ou le nom d'affichage Grist)
+        function matchUserFromSession(user) {
+            if (listUsers.length === 0) return;
 
-            const matchedUser = listUsers.find(u => {
-                return u.email === gristSessionEmail || 
-                       u.nomComplet === gristSessionEmail || 
-                       u.email.includes(gristSessionEmail) ||
-                       gristSessionEmail.includes(u.email);
+            const emailSes = (user.email || '').trim().toLowerCase();
+            const nameSes = (user.name || '').trim().toLowerCase();
+
+            let matched = listUsers.find(u => {
+                if (emailSes && (u.email === emailSes || u.email.includes(emailSes) || emailSes.includes(u.email))) return true;
+                if (nameSes && (u.nomComplet === nameSes || u.nomComplet.includes(nameSes) || nameSes.includes(u.nomComplet))) return true;
+                return false;
             });
 
-            if (matchedUser) {
-                currentUserId = matchedUser.id;
-                document.getElementById('current-user-select').value = matchedUser.id;
+            if (matched) {
+                currentUserId = matched.id;
+                document.getElementById('current-user-select').value = matched.id;
                 document.getElementById('auto-auth-info').style.display = 'block';
                 updateReferentUI();
                 refreshAllViews();
@@ -601,7 +601,6 @@
                 if (!pDebutMs || !pFinMs) return;
                 if (pStatut === 'Refusé' || pStatut === 'Clôturé') return;
                 
-                // Chevauchement des créneaux
                 if (debutMs < pFinMs && finMs > pDebutMs) {
                     qteDejaPretee += (pQte ? Number(pQte) : 1);
                 }
@@ -646,7 +645,6 @@
             const debutIso = new Date(document.getElementById('debut-pret').value).toISOString();
             const finIso = new Date(document.getElementById('fin-pret').value).toISOString();
 
-            // Construction du payload correspondant aux colonnes de PRET_MATERIEL
             const payload = {
                 Materiel: matRowId,
                 Quantite: qteDemandee,
