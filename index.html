@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Gestion du Matériel - Sécurisé</title>
+    <title>Gestion Matériel - ICOM Sécurisé</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <style>
         :root {
@@ -72,10 +72,10 @@
     <div class="top-bar">
         <div>
             <h2 style="margin:0;">Gestion du Matériel Interne</h2>
-            <small style="color:#666;">Authentification sécurisée par session Grist</small>
+            <small style="color:#666;">Authentification sécurisée par liaison ICOM</small>
         </div>
         <div class="user-info">
-            <span id="user-display">🔒 Authentification en cours...</span>
+            <span id="user-display">🔒 En attente de l'agent...</span>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
     </div>
@@ -117,7 +117,7 @@
                         <textarea id="details-demande" placeholder="Précisez l'événement..." required></textarea>
                     </div>
                 </div>
-                <button type="submit" id="submit-btn">Soumettre la demande</button>
+                <button type="submit">Soumettre la demande</button>
                 <p id="form-feedback" style="margin-top:10px; font-weight:bold;"></p>
             </form>
         </div>
@@ -137,7 +137,7 @@
                     </tr>
                 </thead>
                 <tbody id="my-loans-tbody">
-                    <tr><td colspan="4">Chargement...</td></tr>
+                    <tr><td colspan="4">Sélectionnez votre profil dans la vue liée.</td></tr>
                 </tbody>
             </table>
         </div>
@@ -166,13 +166,37 @@
 
     <script>
         let currentUserId = null;
-        let currentUserEmail = null;
         let isReferent = false;
         let listMateriel = [];
         let recordsPrets = [];
         let mapUsers = {};
 
         grist.ready({ requiredAccess: 'full' });
+
+        // C'EST ICI QUE LA MAGIE ICOM OPÈRE : 
+        // Le widget écoute l'enregistrement actif transmis par Grist (filtré par la vue liée)
+        grist.onRecord(function(record) {
+            if (record && record.id) {
+                currentUserId = record.id;
+                const nom = record.NomComplet || record.Email || `Agent #${record.id}`;
+                isReferent = record.ReferentMateriel ? Boolean(record.ReferentMateriel) : false;
+
+                document.getElementById('user-display').textContent = `✅ Connecté : ${nom}`;
+                
+                const badge = document.getElementById('referent-badge');
+                const tabRef = document.getElementById('tab-btn-referent');
+                if (isReferent) {
+                    badge.style.display = 'inline-block';
+                    tabRef.style.display = 'inline-block';
+                } else {
+                    badge.style.display = 'none';
+                    tabRef.style.display = 'none';
+                }
+                renderViews();
+            } else {
+                document.getElementById('user-display').textContent = "⚠️ Aucun agent sélectionné dans la vue liée.";
+            }
+        });
 
         grist.onRecords(function(records) {
             recordsPrets = records || [];
@@ -186,68 +210,21 @@
 
         async function initApp() {
             try {
-                // 1. Récupération sécurisée de l'utilisateur connecté via l'API Grist
-                const userProfile = await grist.docApi.fetchSelectedTable ? null : await grist.selectedTable.fetchSelectedTable ? null : null;
-                
-                // Récupération de l'email de session Grist
-                let sessionEmail = "";
-                try {
-                    const profile = await grist.rpc.onUser ? null : null; // Mécanisme de sécurité Grist standard
-                    // On interroge l'API pour récupérer le profil actif de l'utilisateur Grist
-                } catch(e) {}
-
-                // Méthode robuste de récupération de l'email via l'environnement ou les paramètres Grist
-                const urlParams = new URLSearchParams(window.location.search);
-                // Grist transmet souvent l'email ou l'utilisateur dans les paramètres ou via le profil document
-                
-                // Pour s'aligner sur la méthode ICOM : lecture de la table d'identité (Utilisateurs / Team)
-                const userTable = await resolveTableName('Utilisateurs') || await resolveTableName('Team');
+                // 1. Charger la table des utilisateurs pour le mapping des noms dans l'espace référent
+                const userTable = await resolveTableName('Utilisateurs');
                 if (userTable) {
                     const userData = await grist.docApi.fetchTable(userTable);
                     mapUsers = {};
-
-                    // On cherche l'utilisateur par son email dans la table
-                    // Si l'environnement de test ne renvoie pas l'email de session, on utilise le premier profil ou l'API de profil
-                    let matchedId = null;
-                    
-                    // Récupération sécurisée du profil Grist courant s'il existe
-                    let userSessionObj = null;
-                    try {
-                        userSessionObj = await window.grist.venv?.getUser ? await window.grist.venv.getUser() : null;
-                    } catch(err) {}
-
-                    const targetEmail = (userSessionObj && userSessionObj.email) ? userSessionObj.email.trim().toLowerCase() : "";
-
                     if (userData && userData.id) {
                         for (let i = 0; i < userData.id.length; i++) {
-                            const email = userData.Email ? String(userData.Email[i]).trim().toLowerCase() : '';
-                            const nom = userData.NomComplet ? String(userData.NomComplet[i]) : (userData.Nom ? String(userData.Nom[i]) : '');
-                            const ref = userData.ReferentMateriel ? Boolean(userData.ReferentMateriel[i]) : false;
-
-                            mapUsers[userData.id[i]] = { label: nom || email, email, ref };
-
-                            if (targetEmail && email === targetEmail) {
-                                matchedId = userData.id[i];
-                            }
+                            const nom = userData.NomComplet ? String(userData.NomComplet[i]) : '';
+                            const email = userData.Email ? String(userData.Email[i]) : '';
+                            mapUsers[userData.id[i]] = nom || email;
                         }
-                    }
-
-                    if (matchedId) {
-                        currentUserId = matchedId;
-                        isReferent = mapUsers[currentUserId].ref;
-                        document.getElementById('user-display').textContent = `✅ Connecté : ${mapUsers[currentUserId].label}`;
-                    } else if (Object.keys(mapUsers).length > 0) {
-                        // En mode développement / test si la session est neutre, on prend le premier ou on affiche une alerte
-                        // Pour sécuriser en production, si aucun match n'est trouvé, on bloque la soumission.
-                        currentUserId = Number(Object.keys(mapUsers)[0]); 
-                        isReferent = mapUsers[currentUserId].ref;
-                        document.getElementById('user-display').textContent = `⚠️ Mode par défaut : ${mapUsers[currentUserId].label}`;
                     }
                 }
 
-                updateReferentUI();
-
-                // 2. Chargement du catalogue MATERIEL
+                // 2. Charger le catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
@@ -263,28 +240,12 @@
                     }
                     populateMaterielSelect();
                 }
-                renderViews();
             } catch (e) {
-                console.error("Erreur d'initialisation sécurisée :", e);
-                document.getElementById('global-alert').style.display = 'block';
-                document.getElementById('global-alert').textContent = "Erreur d'authentification du widget : " + e.message;
+                console.error("Erreur d'initialisation :", e);
             }
         }
 
         initApp();
-
-        function updateReferentUI() {
-            const badge = document.getElementById('referent-badge');
-            const tabRef = document.getElementById('tab-btn-referent');
-
-            if (isReferent) {
-                badge.style.display = 'inline-block';
-                tabRef.style.display = 'inline-block';
-            } else {
-                badge.style.display = 'none';
-                tabRef.style.display = 'none';
-            }
-        }
 
         function populateMaterielSelect() {
             const select = document.getElementById('select-materiel');
@@ -306,7 +267,7 @@
 
         document.getElementById('loan-form').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if (!currentUserId) { alert("Erreur d'identification de l'agent."); return; }
+            if (!currentUserId) { alert("Agent non identifié par la vue liée."); return; }
 
             const payload = {
                 Materiel: Number(document.getElementById('select-materiel').value),
@@ -338,7 +299,7 @@
 
         function renderMyLoans() {
             const tbody = document.getElementById('my-loans-tbody');
-            if (!currentUserId) return;
+            if (!currentUserId) { tbody.innerHTML = '<tr><td colspan="4">En attente de l\'agent...</td></tr>'; return; }
             const mine = recordsPrets.filter(p => Number(p.Demandeur) === Number(currentUserId));
             if (mine.length === 0) { tbody.innerHTML = '<tr><td colspan="4">Aucune demande enregistrée à votre nom.</td></tr>'; return; }
 
@@ -358,7 +319,7 @@
             tbody.innerHTML = '';
             toValidate.forEach(p => {
                 const mat = listMateriel.find(m => m.id === Number(p.Materiel)) || {};
-                const dem = mapUsers[p.Demandeur] ? mapUsers[p.Demandeur].label : `Agent #${p.Demandeur}`;
+                const dem = mapUsers[p.Demandeur] || `Agent #${p.Demandeur}`;
                 tbody.innerHTML += `<tr><td>${dem}</td><td>${mat.nom || ''}</td><td>${p.Quantite}</td><td>${new Date(p.DebutPret).toLocaleDateString()}</td><td><button onclick="validerPret(${p.id}, 'Validé')">Valider</button></td></tr>`;
             });
         }
