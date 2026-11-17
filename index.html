@@ -54,9 +54,9 @@
             display: none;
             white-space: nowrap;
         }
-        .auto-auth-status {
+        .auth-status {
             font-size: 13px;
-            color: var(--success);
+            color: var(--primary);
             font-weight: 600;
         }
         
@@ -191,7 +191,7 @@
         </div>
         <div class="user-info">
             <div>
-                <div id="user-display-name" class="auto-auth-status">Connexion en cours...</div>
+                <div id="user-display-name" class="auth-status">Agent : Chargement...</div>
             </div>
             <span id="referent-badge" class="role-tag">Référent Matériel</span>
         </div>
@@ -316,14 +316,20 @@
         let mapUsers = {};
         let listUsers = [];
         let currentUserId = null;
-        let sessionResolved = false;
 
         grist.ready({ requiredAccess: 'full' });
 
-        // Authentification automatique transparente via la session Grist
+        // 1. Double écoute comme sur le widget ICOM : récupération via la session et la table active
         grist.onUser(function(user) {
-            if (user) {
-                resolveUser(user);
+            if (user && user.email) {
+                matchUser(user.email, user.name);
+            }
+        });
+
+        grist.onRecord(function(record) {
+            // Si le widget est placé en vue liée sur la table Utilisateurs, l'agent est identifié instantanément
+            if (record && record.id) {
+                setAuthenticatedUser(record.id, record.NomComplet || record.Email || `Agent #${record.id}`);
             }
         });
 
@@ -375,7 +381,7 @@
 
         async function initApp() {
             try {
-                // 1. Chargement de la table Utilisateurs en arrière-plan
+                // A. Chargement de la table Utilisateurs
                 const usersTable = await resolveTableName('Utilisateurs');
                 if (usersTable) {
                     const usersData = await grist.docApi.fetchTable(usersTable);
@@ -401,7 +407,18 @@
                     }
                 }
 
-                // 2. Chargement du catalogue MATERIEL (indépendant de l'auth pour s'afficher tout de suite)
+                // S'il y a des utilisateurs, on active un repli par défaut (le premier) si la session tarde
+                if (listUsers.length > 0 && !currentUserId) {
+                    // On cherche dans le stockage local s'il y a un agent mémorisé
+                    const savedId = localStorage.getItem('grist_mat_uid');
+                    if (savedId && mapUsers[Number(savedId)]) {
+                        setAuthenticatedUser(Number(savedId), mapUsers[Number(savedId)].label);
+                    } else {
+                        setAuthenticatedUser(listUsers[0].id, listUsers[0].label + " (Par défaut)");
+                    }
+                }
+
+                // B. Chargement du catalogue MATERIEL
                 const matTable = await resolveTableName('MATERIEL');
                 if (matTable) {
                     const matData = await grist.docApi.fetchTable(matTable);
@@ -428,11 +445,6 @@
                     populateMaterielSelect();
                 }
 
-                // Si grist.onUser a déjà répondu, on retente l'association
-                if (window.lastUserSession) {
-                    resolveUser(window.lastUserSession);
-                }
-
                 refreshAllViews();
             } catch (err) {
                 console.error("Erreur initialisation :", err);
@@ -441,33 +453,29 @@
 
         initApp();
 
-        function resolveUser(user) {
-            window.lastUserSession = user;
+        function matchUser(emailSes, nameSes) {
             if (listUsers.length === 0) return;
+            emailSes = (emailSes || '').toLowerCase();
+            nameSes = (nameSes || '').toLowerCase();
 
-            const emailSes = (user.email || '').trim().toLowerCase();
-            const nameSes = (user.name || '').trim().toLowerCase();
-
-            let matched = listUsers.find(u => {
-                if (emailSes && (u.email === emailSes || u.email.includes(emailSes) || emailSes.includes(u.email))) return true;
+            const matched = listUsers.find(u => {
+                if (emailSes && (u.email === emailSes || u.email.includes(emailSes))) return true;
                 if (nameSes && (u.nomComplet === nameSes || u.nomComplet.includes(nameSes) || nameSes.includes(u.nomComplet))) return true;
                 return false;
             });
 
             if (matched) {
-                currentUserId = matched.id;
-                document.getElementById('user-display-name').textContent = `✓ ${matched.label}`;
-                sessionResolved = true;
-                updateReferentUI();
-                refreshAllViews();
-            } else if (!sessionResolved && listUsers.length > 0) {
-                // Fallback de sécurité : si aucun match strict, on prend le premier utilisateur ou le propriétaire par défaut pour éviter de bloquer
-                currentUserId = listUsers[0].id;
-                document.getElementById('user-display-name').textContent = `✓ ${listUsers[0].label} (Mode par défaut)`;
-                sessionResolved = true;
-                updateReferentUI();
-                refreshAllViews();
+                setAuthenticatedUser(matched.id, matched.label);
             }
+        }
+
+        function setAuthenticatedUser(id, label) {
+            currentUserId = id;
+            localStorage.setItem('grist_mat_uid', id);
+            const el = document.getElementById('user-display-name');
+            if (el) el.textContent = `✓ Agent : ${label}`;
+            updateReferentUI();
+            refreshAllViews();
         }
 
         function populateCategoriesFromMateriel() {
