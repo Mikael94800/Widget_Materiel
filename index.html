@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -101,6 +100,21 @@ button:disabled {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: bold;
+}
+.checkbox-group input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
 }
 @media(max-width:600px) {
   body { padding: 12px; }
@@ -163,6 +177,11 @@ button:disabled {
 <div class="panel">
   <h3>Demandes en attente de validation</h3>
   <div id="attentes">Chargement...</div>
+</div>
+
+<div class="panel">
+  <h3>Suivi des prêts validés (Prêt & Restitution)</h3>
+  <div id="suivi-prets">Chargement...</div>
 </div>
 
 <script>
@@ -243,6 +262,7 @@ async function chargerDonnees() {
 
   afficherCatalogue();
   afficherAttentes();
+  afficherSuiviPrets();
   verifierDisponibilite();
 }
 
@@ -320,7 +340,6 @@ async function envoyerDemande() {
   message.textContent = "";
 
   try {
-    // Nouvelle vérification juste avant l'enregistrement.
     await chargerDonnees();
 
     const dispo = stockDisponible(id, debut, fin);
@@ -332,8 +351,6 @@ async function envoyerDemande() {
       );
     }
 
-    // Ne jamais transmettre Demandeur, EmailCreateur,
-    // ReferentMateriel ou Statut depuis le navigateur.
     await grist.docApi.applyUserActions([
       [
         "AddRecord",
@@ -341,11 +358,11 @@ async function envoyerDemande() {
         null,
         {
           Materiel: id,
-  Quantite: q,
-  DebutPret: debut,
-  FinPret: fin,
-  DetailsDemande: details,
-  Statut: "En attente"
+          Quantite: q,
+          DebutPret: debut,
+          FinPret: fin,
+          DetailsDemande: details,
+          Statut: "En attente"
         }
       ]
     ]);
@@ -371,10 +388,7 @@ async function envoyerDemande() {
 
 function afficherAttentes() {
   const zone = $("attentes");
-
-  const liste = prets.filter(
-    p => p.Statut === "En attente"
-  );
+  const liste = prets.filter(p => p.Statut === "En attente");
 
   zone.innerHTML = "";
 
@@ -384,16 +398,13 @@ function afficherAttentes() {
   }
 
   liste.forEach(p => {
-    const materiel = materiels.find(
-      m => Number(m.id) === Number(p.Materiel)
-    );
+    const materiel = materiels.find(m => Number(m.id) === Number(p.Materiel));
 
     const bloc = document.createElement("div");
     bloc.className = "request";
 
     const titre = document.createElement("strong");
-    titre.textContent =
-      materiel ? materiel.Materiel : "Matériel inconnu";
+    titre.textContent = materiel ? materiel.Materiel : "Matériel inconnu";
 
     const infos = document.createElement("p");
     infos.textContent =
@@ -403,11 +414,9 @@ function afficherAttentes() {
 
     const demandeur = document.createElement("p");
     demandeur.className = "small";
-
-    const utilisateur = p.Demandeur;
     demandeur.textContent =
       "Demande n° " + p.id +
-      (utilisateur ? " | Demandeur : " + utilisateur : "");
+      (p.Demandeur ? " | Demandeur : " + p.Demandeur : "");
 
     const actions = document.createElement("div");
     actions.className = "actions";
@@ -423,6 +432,74 @@ function afficherAttentes() {
     refuser.onclick = () => modifierStatut(p.id, "Refusé");
 
     actions.append(valider, refuser);
+    bloc.append(titre, infos, demandeur, actions);
+    zone.appendChild(bloc);
+  });
+}
+
+function afficherSuiviPrets() {
+  const zone = $("suivi-prets");
+  const liste = prets.filter(p => p.Statut === "Validé");
+
+  zone.innerHTML = "";
+
+  if (!liste.length) {
+    zone.textContent = "Aucun prêt validé en cours.";
+    return;
+  }
+
+  liste.forEach(p => {
+    const materiel = materiels.find(m => Number(m.id) === Number(p.Materiel));
+
+    const bloc = document.createElement("div");
+    bloc.className = "request";
+
+    const titre = document.createElement("strong");
+    titre.textContent = (materiel ? materiel.Materiel : "Matériel inconnu") + " (Validé)";
+
+    const infos = document.createElement("p");
+    infos.textContent =
+      "Quantité : " + p.Quantite +
+      " | Du " + displayDate(p.DebutPret) +
+      " au " + displayDate(p.FinPret);
+
+    const demandeur = document.createElement("p");
+    demandeur.className = "small";
+    demandeur.textContent =
+      "Demande n° " + p.id +
+      (p.Demandeur ? " | Demandeur : " + p.Demandeur : "");
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    // 1. Case à cocher "Matériel prêté"
+    const isPrete = Boolean(p.MaterielPrete);
+    const divPrete = document.createElement("label");
+    divPrete.className = "checkbox-group";
+    
+    const cbPrete = document.createElement("input");
+    cbPrete.type = "checkbox";
+    cbPrete.checked = isPrete;
+    cbPrete.onchange = () => mettreAJourChamp(p.id, "MaterielPrete", cbPrete.checked);
+
+    divPrete.append(cbPrete, document.createTextNode("Matériel prêté"));
+    actions.appendChild(divPrete);
+
+    // 2. Case à cocher "Matériel restitué" (apparaît uniquement si le matériel est prêté)
+    if (isPrete) {
+      const isRestitue = Boolean(p.MaterielRestitue);
+      const divRestitue = document.createElement("label");
+      divRestitue.className = "checkbox-group";
+
+      const cbRestitue = document.createElement("input");
+      cbRestitue.type = "checkbox";
+      cbRestitue.checked = isRestitue;
+      cbRestitue.onchange = () => mettreAJourChamp(p.id, "MaterielRestitue", cbRestitue.checked);
+
+      divRestitue.append(cbRestitue, document.createTextNode("Matériel restitué"));
+      actions.appendChild(divRestitue);
+    }
+
     bloc.append(titre, infos, demandeur, actions);
     zone.appendChild(bloc);
   });
@@ -450,6 +527,28 @@ async function modifierStatut(id, statut) {
   }
 }
 
+async function mettreAJourChamp(id, champ, valeur) {
+  try {
+    await grist.docApi.applyUserActions([
+      [
+        "UpdateRecord",
+        TABLE_PRET,
+        id,
+        {[champ]: valeur}
+      ]
+    ]);
+
+    await chargerDonnees();
+
+  } catch (e) {
+    alert(
+      "Action refusée par GRIST. " +
+      "Vous n'êtes pas autorisé à modifier ce champ.\n\n" + e.message
+    );
+    await chargerDonnees(); // Recharge pour remettre l'état initial en cas d'erreur/refus
+  }
+}
+
 ["materiel", "quantite", "debut", "fin"].forEach(id => {
   $(id).addEventListener("change", verifierDisponibilite);
   $(id).addEventListener("input", verifierDisponibilite);
@@ -457,8 +556,6 @@ async function modifierStatut(id, statut) {
 
 $("envoyer").addEventListener("click", envoyerDemande);
 
-// Le widget nécessite l'accès complet au document,
-// soumis aux règles d'accès configurées dans GRIST.
 grist.ready({
   requiredAccess: "full"
 });
