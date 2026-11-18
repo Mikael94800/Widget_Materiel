@@ -100,8 +100,19 @@ button:disabled {
 .request-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 6px;
+}
+.request-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.request-right-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
 }
 .actions {
   display: flex;
@@ -243,8 +254,9 @@ function overlaps(start1, end1, start2, end2) {
   return start1 < end2 && end1 > start2;
 }
 
-function reservationsConcernees(materielId, debut, fin) {
+function reservationsConcernees(materielId, debut, fin, excludePretId = null) {
   return prets.filter(p =>
+    Number(p.id) !== Number(excludePretId) &&
     Number(p.Materiel) === Number(materielId) &&
     ["En attente", "Validé"].includes(p.Statut) &&
     p.DebutPret != null &&
@@ -258,7 +270,7 @@ function reservationsConcernees(materielId, debut, fin) {
   );
 }
 
-function stockDisponible(materielId, debut, fin) {
+function stockDisponible(materielId, debut, fin, excludePretId = null) {
   const m = materiels.find(
     x => Number(x.id) === Number(materielId)
   );
@@ -266,7 +278,7 @@ function stockDisponible(materielId, debut, fin) {
   if (!m) return 0;
 
   const reserve = reservationsConcernees(
-    materielId, debut, fin
+    materielId, debut, fin, excludePretId
   ).reduce((total, p) => total + Number(p.Quantite || 0), 0);
 
   return Number(m.Quantite || 0) - reserve;
@@ -301,8 +313,8 @@ function afficherCatalogue() {
   materiels.forEach(m => {
     const option = document.createElement("option");
     option.value = m.id;
+    // Uniquement le nom dans la colonne "Materiel" (sans IDMateriel)
     option.textContent =
-      (m.IdMateriel ? m.IdMateriel + " - " : "") +
       m.Materiel +
       " (stock : " + m.Quantite + ")";
     select.appendChild(option);
@@ -431,19 +443,32 @@ function afficherAttentes() {
     const bloc = document.createElement("div");
     bloc.className = "request";
 
-    // En-tête avec Matériel à gauche et Quantité demandée à droite
     const header = document.createElement("div");
     header.className = "request-header";
 
+    const titleGroup = document.createElement("div");
+    titleGroup.className = "request-title-group";
     const titre = document.createElement("strong");
     titre.textContent = materiel ? materiel.Materiel : "Matériel inconnu";
+    titleGroup.appendChild(titre);
 
+    const rightGroup = document.createElement("div");
+    rightGroup.className = "request-right-group";
     const qteSpan = document.createElement("span");
-    qteSpan.className = "small";
     qteSpan.style.fontWeight = "bold";
     qteSpan.textContent = "Quantité demandée : " + p.Quantite;
+    rightGroup.appendChild(qteSpan);
 
-    header.append(titre, qteSpan);
+    if (p.DebutPret && p.FinPret) {
+      const dispoRestante = stockDisponible(p.Materiel, Number(p.DebutPret), Number(p.FinPret), p.id);
+      const dispoSpan = document.createElement("span");
+      dispoSpan.style.fontWeight = "bold";
+      dispoSpan.style.color = "#4b5563";
+      dispoSpan.textContent = "Quantité disponible pour cette période : " + Math.max(0, dispoRestante);
+      rightGroup.appendChild(dispoSpan);
+    }
+
+    header.append(titleGroup, rightGroup);
 
     const infos = document.createElement("p");
     infos.style.margin = "4px 0";
@@ -452,18 +477,16 @@ function afficherAttentes() {
       " au " + displayDate(p.FinPret);
 
     const demandeur = document.createElement("p");
-    demandeur.className = "small";
+    demandeur.style.margin = "4px 0";
     demandeur.textContent =
       "Demande n° " + p.id +
       (p.Demandeur ? " | Demandeur : " + getNomUtilisateur(p.Demandeur) : "");
 
     bloc.append(header, infos, demandeur);
 
-    // Affichage du motif en attente si renseigné (même taille de police .small)
     if (p.DetailsDemande) {
       const motifP = document.createElement("p");
-      motifP.className = "small";
-      motifP.style.marginTop = "4px";
+      motifP.style.margin = "4px 0";
       motifP.textContent = "Motif : " + p.DetailsDemande;
       bloc.append(motifP);
     }
@@ -504,10 +527,11 @@ function afficherSuiviPrets() {
     const bloc = document.createElement("div");
     bloc.className = "request";
 
-    // En-tête avec Matériel + Statut à gauche et Quantité demandée à droite
     const header = document.createElement("div");
     header.className = "request-header";
 
+    const titleGroup = document.createElement("div");
+    titleGroup.className = "request-title-group";
     const titre = document.createElement("strong");
     
     let validationText = "Validé";
@@ -530,13 +554,25 @@ function afficherSuiviPrets() {
     }
 
     titre.textContent = (materiel ? materiel.Materiel : "Matériel inconnu") + " (" + validationText + ")";
+    titleGroup.appendChild(titre);
 
+    const rightGroup = document.createElement("div");
+    rightGroup.className = "request-right-group";
     const qteSpan = document.createElement("span");
-    qteSpan.className = "small";
     qteSpan.style.fontWeight = "bold";
     qteSpan.textContent = "Quantité demandée : " + p.Quantite;
+    rightGroup.appendChild(qteSpan);
 
-    header.append(titre, qteSpan);
+    if (p.DebutPret && p.FinPret) {
+      const dispoRestante = stockDisponible(p.Materiel, Number(p.DebutPret), Number(p.FinPret), p.id);
+      const dispoSpan = document.createElement("span");
+      dispoSpan.style.fontWeight = "bold";
+      dispoSpan.style.color = "#4b5563";
+      dispoSpan.textContent = "Quantité disponible pour cette période : " + Math.max(0, dispoRestante);
+      rightGroup.appendChild(dispoSpan);
+    }
+
+    header.append(titleGroup, rightGroup);
 
     const infos = document.createElement("p");
     infos.style.margin = "4px 0";
@@ -545,14 +581,13 @@ function afficherSuiviPrets() {
       " au " + displayDate(p.FinPret);
 
     const demandeur = document.createElement("p");
-    demandeur.className = "small";
+    demandeur.style.margin = "4px 0";
     demandeur.textContent =
       "Demande n° " + p.id +
       (p.Demandeur ? " | Demandeur : " + getNomUtilisateur(p.Demandeur) : "");
 
     bloc.append(header, infos, demandeur);
 
-    // Encart affichant les détails / motif de la demande (harmonisé en taille .small)
     if (p.DetailsDemande) {
       const fieldMotif = document.createElement("div");
       fieldMotif.className = "field";
@@ -560,7 +595,6 @@ function afficherSuiviPrets() {
       const labelMotif = document.createElement("label");
       labelMotif.textContent = "Motif de la demande";
       const taMotif = document.createElement("textarea");
-      taMotif.className = "small";
       taMotif.value = p.DetailsDemande;
       taMotif.readOnly = true;
       fieldMotif.append(labelMotif, taMotif);
@@ -570,7 +604,6 @@ function afficherSuiviPrets() {
     const actions = document.createElement("div");
     actions.className = "actions";
 
-    // 1. Case à cocher "Matériel prêté"
     const isPrete = Boolean(p.MaterielPrete);
     const divPrete = document.createElement("label");
     divPrete.className = "checkbox-group";
@@ -583,7 +616,6 @@ function afficherSuiviPrets() {
     divPrete.append(cbPrete, document.createTextNode("Matériel prêté"));
     actions.appendChild(divPrete);
 
-    // 2. Case à cocher "Matériel restitué" (apparaît uniquement si le matériel est prêté)
     if (isPrete) {
       const isRestitue = Boolean(p.MaterielRestitue);
       const divRestitue = document.createElement("label");
@@ -611,14 +643,12 @@ function afficherSuiviPrets() {
 
     bloc.append(actions);
 
-    // 3. Encarts de commentaires
     const commentsContainer = document.createElement("div");
     commentsContainer.style.marginTop = "12px";
     commentsContainer.style.display = "grid";
     commentsContainer.style.gridTemplateColumns = "1fr 1fr";
     commentsContainer.style.gap = "10px";
 
-    // Commentaire service emprunteur
     const fieldEmp = document.createElement("div");
     fieldEmp.className = "field";
     const labelEmp = document.createElement("label");
@@ -629,7 +659,6 @@ function afficherSuiviPrets() {
     taEmp.onchange = () => mettreAJourChamp(p.id, "ObservationRetourDemandeur", taEmp.value.trim());
     fieldEmp.append(labelEmp, taEmp);
 
-    // Commentaire service prêteur
     const fieldPreteur = document.createElement("div");
     fieldPreteur.className = "field";
     const labelPreteur = document.createElement("label");
