@@ -1,8 +1,3 @@
-C'est compris ! J'ai supprimé la référence à `MotifDemande` pour utiliser directement la colonne existante `DetailsDemande` lors de l'enregistrement de la demande, et l'afficher dans le suivi de dossier.
-
-Voici le code complet et corrigé de votre widget à intégrer dans GitHub :
-
-```html
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -101,6 +96,12 @@ button:disabled {
   border-radius: 8px;
   margin: 10px 0;
   background: white;
+}
+.request-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
 }
 .actions {
   display: flex;
@@ -430,13 +431,24 @@ function afficherAttentes() {
     const bloc = document.createElement("div");
     bloc.className = "request";
 
+    // En-tête avec Matériel à gauche et Quantité demandée à droite
+    const header = document.createElement("div");
+    header.className = "request-header";
+
     const titre = document.createElement("strong");
     titre.textContent = materiel ? materiel.Materiel : "Matériel inconnu";
 
+    const qteSpan = document.createElement("span");
+    qteSpan.className = "small";
+    qteSpan.style.fontWeight = "bold";
+    qteSpan.textContent = "Quantité demandée : " + p.Quantite;
+
+    header.append(titre, qteSpan);
+
     const infos = document.createElement("p");
+    infos.style.margin = "4px 0";
     infos.textContent =
-      "Quantité : " + p.Quantite +
-      " | Du " + displayDate(p.DebutPret) +
+      "Du " + displayDate(p.DebutPret) +
       " au " + displayDate(p.FinPret);
 
     const demandeur = document.createElement("p");
@@ -445,15 +457,15 @@ function afficherAttentes() {
       "Demande n° " + p.id +
       (p.Demandeur ? " | Demandeur : " + getNomUtilisateur(p.Demandeur) : "");
 
-    // Affichage du détail / motif en attente si renseigné
+    bloc.append(header, infos, demandeur);
+
+    // Affichage du motif en attente si renseigné (même taille de police .small)
     if (p.DetailsDemande) {
       const motifP = document.createElement("p");
       motifP.className = "small";
       motifP.style.marginTop = "4px";
       motifP.textContent = "Motif : " + p.DetailsDemande;
-      bloc.append(titre, infos, demandeur, motifP);
-    } else {
-      bloc.append(titre, infos, demandeur);
+      bloc.append(motifP);
     }
 
     const actions = document.createElement("div");
@@ -492,6 +504,10 @@ function afficherSuiviPrets() {
     const bloc = document.createElement("div");
     bloc.className = "request";
 
+    // En-tête avec Matériel + Statut à gauche et Quantité demandée à droite
+    const header = document.createElement("div");
+    header.className = "request-header";
+
     const titre = document.createElement("strong");
     
     let validationText = "Validé";
@@ -515,10 +531,17 @@ function afficherSuiviPrets() {
 
     titre.textContent = (materiel ? materiel.Materiel : "Matériel inconnu") + " (" + validationText + ")";
 
+    const qteSpan = document.createElement("span");
+    qteSpan.className = "small";
+    qteSpan.style.fontWeight = "bold";
+    qteSpan.textContent = "Quantité demandée : " + p.Quantite;
+
+    header.append(titre, qteSpan);
+
     const infos = document.createElement("p");
+    infos.style.margin = "4px 0";
     infos.textContent =
-      "Quantité : " + p.Quantite +
-      " | Du " + displayDate(p.DebutPret) +
+      "Du " + displayDate(p.DebutPret) +
       " au " + displayDate(p.FinPret);
 
     const demandeur = document.createElement("p");
@@ -527,9 +550,9 @@ function afficherSuiviPrets() {
       "Demande n° " + p.id +
       (p.Demandeur ? " | Demandeur : " + getNomUtilisateur(p.Demandeur) : "");
 
-    bloc.append(titre, infos, demandeur);
+    bloc.append(header, infos, demandeur);
 
-    // Encart affichant les détails / motif de la demande (pour le suivi)
+    // Encart affichant les détails / motif de la demande (harmonisé en taille .small)
     if (p.DetailsDemande) {
       const fieldMotif = document.createElement("div");
       fieldMotif.className = "field";
@@ -537,6 +560,7 @@ function afficherSuiviPrets() {
       const labelMotif = document.createElement("label");
       labelMotif.textContent = "Motif de la demande";
       const taMotif = document.createElement("textarea");
+      taMotif.className = "small";
       taMotif.value = p.DetailsDemande;
       taMotif.readOnly = true;
       fieldMotif.append(labelMotif, taMotif);
@@ -710,5 +734,3 @@ chargerDonnees().catch(e => {
 </script>
 </body>
 </html>
-
-```
