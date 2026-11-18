@@ -1,3 +1,8 @@
+C'est compris ! J'ai supprimé la référence à `MotifDemande` pour utiliser directement la colonne existante `DetailsDemande` lors de l'enregistrement de la demande, et l'afficher dans le suivi de dossier.
+
+Voici le code complet et corrigé de votre widget à intégrer dans GitHub :
+
+```html
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -383,7 +388,7 @@ async function envoyerDemande() {
           Quantite: q,
           DebutPret: debut,
           FinPret: fin,
-          MotifDemande: details,
+          DetailsDemande: details,
           Statut: "En attente"
         }
       ]
@@ -440,12 +445,12 @@ function afficherAttentes() {
       "Demande n° " + p.id +
       (p.Demandeur ? " | Demandeur : " + getNomUtilisateur(p.Demandeur) : "");
 
-    // Affichage du motif en attente si renseigné
-    if (p.MotifDemande) {
+    // Affichage du détail / motif en attente si renseigné
+    if (p.DetailsDemande) {
       const motifP = document.createElement("p");
       motifP.className = "small";
       motifP.style.marginTop = "4px";
-      motifP.textContent = "Motif : " + p.MotifDemande;
+      motifP.textContent = "Motif : " + p.DetailsDemande;
       bloc.append(titre, infos, demandeur, motifP);
     } else {
       bloc.append(titre, infos, demandeur);
@@ -524,15 +529,15 @@ function afficherSuiviPrets() {
 
     bloc.append(titre, infos, demandeur);
 
-    // Encart affichant le Motif de la demande (pour le service prêteur/suivi)
-    if (p.MotifDemande) {
+    // Encart affichant les détails / motif de la demande (pour le suivi)
+    if (p.DetailsDemande) {
       const fieldMotif = document.createElement("div");
       fieldMotif.className = "field";
       fieldMotif.style.marginTop = "8px";
       const labelMotif = document.createElement("label");
       labelMotif.textContent = "Motif de la demande";
       const taMotif = document.createElement("textarea");
-      taMotif.value = p.MotifDemande;
+      taMotif.value = p.DetailsDemande;
       taMotif.readOnly = true;
       fieldMotif.append(labelMotif, taMotif);
       bloc.append(fieldMotif);
@@ -705,3 +710,5 @@ chargerDonnees().catch(e => {
 </script>
 </body>
 </html>
+
+```
