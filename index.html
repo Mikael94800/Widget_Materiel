@@ -53,6 +53,7 @@ input, select, textarea {
   background: white;
 }
 textarea { min-height: 75px; resize: vertical; }
+textarea[readonly] { background: #f9fafb; color: #4b5563; cursor: default; }
 button {
   border: 0;
   border-radius: 7px;
@@ -276,7 +277,6 @@ async function chargerDonnees() {
   prets = rowsFromGrist(p);
   utilisateurs = rowsFromGrist(u);
 
-  // Identifier l'utilisateur connecté via son email
   if (window.grist && window.grist.user && window.grist.user.email) {
     const email = window.grist.user.email.toLowerCase();
     currentUserRecord = utilisateurs.find(user => user.Email && user.Email.toLowerCase() === email);
@@ -383,7 +383,7 @@ async function envoyerDemande() {
           Quantite: q,
           DebutPret: debut,
           FinPret: fin,
-          DetailsDemande: details,
+          MotifDemande: details,
           Statut: "En attente"
         }
       ]
@@ -440,6 +440,17 @@ function afficherAttentes() {
       "Demande n° " + p.id +
       (p.Demandeur ? " | Demandeur : " + getNomUtilisateur(p.Demandeur) : "");
 
+    // Affichage du motif en attente si renseigné
+    if (p.MotifDemande) {
+      const motifP = document.createElement("p");
+      motifP.className = "small";
+      motifP.style.marginTop = "4px";
+      motifP.textContent = "Motif : " + p.MotifDemande;
+      bloc.append(titre, infos, demandeur, motifP);
+    } else {
+      bloc.append(titre, infos, demandeur);
+    }
+
     const actions = document.createElement("div");
     actions.className = "actions";
 
@@ -454,14 +465,14 @@ function afficherAttentes() {
     refuser.onclick = () => modifierStatut(p.id, "Refusé");
 
     actions.append(valider, refuser);
-    bloc.append(titre, infos, demandeur, actions);
+    bloc.appendChild(actions);
     zone.appendChild(bloc);
   });
 }
 
 function afficherSuiviPrets() {
   const zone = $("suivi-prets");
-  const liste = prets.filter(p => p.Statut === "Validé");
+  const liste = prets.filter(p => p.Statut === "Validé" && !p.MaterielRestitue);
 
   zone.innerHTML = "";
 
@@ -478,7 +489,6 @@ function afficherSuiviPrets() {
 
     const titre = document.createElement("strong");
     
-    // Construction du texte de validation avec référent et date
     let validationText = "Validé";
     const cols = Object.keys(p);
     
@@ -512,6 +522,22 @@ function afficherSuiviPrets() {
       "Demande n° " + p.id +
       (p.Demandeur ? " | Demandeur : " + getNomUtilisateur(p.Demandeur) : "");
 
+    bloc.append(titre, infos, demandeur);
+
+    // Encart affichant le Motif de la demande (pour le service prêteur/suivi)
+    if (p.MotifDemande) {
+      const fieldMotif = document.createElement("div");
+      fieldMotif.className = "field";
+      fieldMotif.style.marginTop = "8px";
+      const labelMotif = document.createElement("label");
+      labelMotif.textContent = "Motif de la demande";
+      const taMotif = document.createElement("textarea");
+      taMotif.value = p.MotifDemande;
+      taMotif.readOnly = true;
+      fieldMotif.append(labelMotif, taMotif);
+      bloc.append(fieldMotif);
+    }
+
     const actions = document.createElement("div");
     actions.className = "actions";
 
@@ -537,13 +563,57 @@ function afficherSuiviPrets() {
       const cbRestitue = document.createElement("input");
       cbRestitue.type = "checkbox";
       cbRestitue.checked = isRestitue;
-      cbRestitue.onchange = () => mettreAJourChamp(p.id, "MaterielRestitue", cbRestitue.checked);
+      cbRestitue.onchange = async () => {
+        if (cbRestitue.checked) {
+          const confirmer = confirm("Matériel restitué. Valider l'archivage du dossier --> oui / non");
+          if (confirmer) {
+            await mettreAJourChamp(p.id, "MaterielRestitue", true);
+          } else {
+            cbRestitue.checked = false;
+          }
+        } else {
+          await mettreAJourChamp(p.id, "MaterielRestitue", false);
+        }
+      };
 
       divRestitue.append(cbRestitue, document.createTextNode("Matériel restitué"));
       actions.appendChild(divRestitue);
     }
 
-    bloc.append(titre, infos, demandeur, actions);
+    bloc.append(actions);
+
+    // 3. Encarts de commentaires
+    const commentsContainer = document.createElement("div");
+    commentsContainer.style.marginTop = "12px";
+    commentsContainer.style.display = "grid";
+    commentsContainer.style.gridTemplateColumns = "1fr 1fr";
+    commentsContainer.style.gap = "10px";
+
+    // Commentaire service emprunteur
+    const fieldEmp = document.createElement("div");
+    fieldEmp.className = "field";
+    const labelEmp = document.createElement("label");
+    labelEmp.textContent = "Commentaire service emprunteur";
+    const taEmp = document.createElement("textarea");
+    taEmp.value = p.ObservationRetourDemandeur || "";
+    taEmp.placeholder = "Observations de l'emprunteur...";
+    taEmp.onchange = () => mettreAJourChamp(p.id, "ObservationRetourDemandeur", taEmp.value.trim());
+    fieldEmp.append(labelEmp, taEmp);
+
+    // Commentaire service prêteur
+    const fieldPreteur = document.createElement("div");
+    fieldPreteur.className = "field";
+    const labelPreteur = document.createElement("label");
+    labelPreteur.textContent = "Commentaire service prêteur";
+    const taPreteur = document.createElement("textarea");
+    taPreteur.value = p.ObservationRetourPreteur || "";
+    taPreteur.placeholder = "Observations du prêteur...";
+    taPreteur.onchange = () => mettreAJourChamp(p.id, "ObservationRetourPreteur", taPreteur.value.trim());
+    fieldPreteur.append(labelPreteur, taPreteur);
+
+    commentsContainer.append(fieldEmp, fieldPreteur);
+    bloc.append(commentsContainer);
+
     zone.appendChild(bloc);
   });
 }
@@ -557,7 +627,6 @@ async function modifierStatut(id, statut) {
       const sampleRow = prets.find(p => Number(p.id) === Number(id)) || prets[0] || {};
       const cols = Object.keys(sampleRow);
 
-      // Détection automatique de colonne de date de validation si elle existe
       const dateCol = cols.find(c => {
         const lc = c.toLowerCase();
         return lc === "datevalidation" || lc === "date_validation" || lc === "validele";
@@ -566,7 +635,6 @@ async function modifierStatut(id, statut) {
         updateData[dateCol] = nowSec;
       }
 
-      // Détection automatique de colonne référent validateur si elle existe
       const refCol = cols.find(c => {
         const lc = c.toLowerCase();
         return lc === "referentvalidateur" || lc === "validateur" || lc === "referent";
