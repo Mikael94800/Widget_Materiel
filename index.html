@@ -187,9 +187,12 @@ button:disabled {
 <script>
 const TABLE_MATERIEL = "MATERIEL";
 const TABLE_PRET = "PRET_MATERIEL";
+const TABLE_UTILISATEURS = "Utilisateurs";
 
 let materiels = [];
 let prets = [];
+let utilisateurs = [];
+let currentUserRecord = null;
 
 const $ = id => document.getElementById(id);
 
@@ -214,8 +217,19 @@ function dateSeconds(value) {
 
 function displayDate(seconds) {
   if (!seconds) return "Non renseigné";
-
   return new Date(seconds * 1000).toLocaleString("fr-FR");
+}
+
+function getNomUtilisateur(userId) {
+  if (!userId) return "Inconnu";
+  const user = utilisateurs.find(u => Number(u.id) === Number(userId));
+  if (!user) return "Agent n° " + userId;
+  const prenom = user.Prenom || user.Prénom || "";
+  const nom = user.Nom || "";
+  if (prenom || nom) {
+    return `${prenom} ${nom}`.trim();
+  }
+  return user.Email || ("Agent n° " + userId);
 }
 
 function overlaps(start1, end1, start2, end2) {
@@ -252,13 +266,21 @@ function stockDisponible(materielId, debut, fin) {
 }
 
 async function chargerDonnees() {
-  const [m, p] = await Promise.all([
+  const [m, p, u] = await Promise.all([
     grist.docApi.fetchTable(TABLE_MATERIEL),
-    grist.docApi.fetchTable(TABLE_PRET)
+    grist.docApi.fetchTable(TABLE_PRET),
+    grist.docApi.fetchTable(TABLE_UTILISATEURS).catch(() => ({ id: [] }))
   ]);
 
   materiels = rowsFromGrist(m);
   prets = rowsFromGrist(p);
+  utilisateurs = rowsFromGrist(u);
+
+  // Identifier l'utilisateur connecté via son email
+  if (window.grist && window.grist.user && window.grist.user.email) {
+    const email = window.grist.user.email.toLowerCase();
+    currentUserRecord = utilisateurs.find(user => user.Email && user.Email.toLowerCase() === email);
+  }
 
   afficherCatalogue();
   afficherAttentes();
@@ -416,7 +438,7 @@ function afficherAttentes() {
     demandeur.className = "small";
     demandeur.textContent =
       "Demande n° " + p.id +
-      (p.Demandeur ? " | Demandeur : " + p.Demandeur : "");
+      (p.Demandeur ? " | Demandeur : " + getNomUtilisateur(p.Demandeur) : "");
 
     const actions = document.createElement("div");
     actions.className = "actions";
@@ -455,7 +477,28 @@ function afficherSuiviPrets() {
     bloc.className = "request";
 
     const titre = document.createElement("strong");
-    titre.textContent = (materiel ? materiel.Materiel : "Matériel inconnu") + " (Validé)";
+    
+    // Construction du texte de validation avec référent et date
+    let validationText = "Validé";
+    const cols = Object.keys(p);
+    
+    const refCol = cols.find(c => {
+      const lc = c.toLowerCase();
+      return lc === "referentvalidateur" || lc === "validateur" || lc === "referent";
+    });
+    if (refCol && p[refCol]) {
+      validationText += " par " + getNomUtilisateur(p[refCol]);
+    }
+
+    const dateCol = cols.find(c => {
+      const lc = c.toLowerCase();
+      return lc === "datevalidation" || lc === "date_validation" || lc === "validele";
+    });
+    if (dateCol && p[dateCol]) {
+      validationText += " le " + displayDate(p[dateCol]);
+    }
+
+    titre.textContent = (materiel ? materiel.Materiel : "Matériel inconnu") + " (" + validationText + ")";
 
     const infos = document.createElement("p");
     infos.textContent =
@@ -467,7 +510,7 @@ function afficherSuiviPrets() {
     demandeur.className = "small";
     demandeur.textContent =
       "Demande n° " + p.id +
-      (p.Demandeur ? " | Demandeur : " + p.Demandeur : "");
+      (p.Demandeur ? " | Demandeur : " + getNomUtilisateur(p.Demandeur) : "");
 
     const actions = document.createElement("div");
     actions.className = "actions";
@@ -507,12 +550,38 @@ function afficherSuiviPrets() {
 
 async function modifierStatut(id, statut) {
   try {
+    const updateData = { Statut: statut };
+
+    if (statut === "Validé") {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const sampleRow = prets.find(p => Number(p.id) === Number(id)) || prets[0] || {};
+      const cols = Object.keys(sampleRow);
+
+      // Détection automatique de colonne de date de validation si elle existe
+      const dateCol = cols.find(c => {
+        const lc = c.toLowerCase();
+        return lc === "datevalidation" || lc === "date_validation" || lc === "validele";
+      });
+      if (dateCol) {
+        updateData[dateCol] = nowSec;
+      }
+
+      // Détection automatique de colonne référent validateur si elle existe
+      const refCol = cols.find(c => {
+        const lc = c.toLowerCase();
+        return lc === "referentvalidateur" || lc === "validateur" || lc === "referent";
+      });
+      if (refCol && currentUserRecord) {
+        updateData[refCol] = currentUserRecord.id;
+      }
+    }
+
     await grist.docApi.applyUserActions([
       [
         "UpdateRecord",
         TABLE_PRET,
         id,
-        {Statut: statut}
+        updateData
       ]
     ]);
 
@@ -545,7 +614,7 @@ async function mettreAJourChamp(id, champ, valeur) {
       "Action refusée par GRIST. " +
       "Vous n'êtes pas autorisé à modifier ce champ.\n\n" + e.message
     );
-    await chargerDonnees(); // Recharge pour remettre l'état initial en cas d'erreur/refus
+    await chargerDonnees();
   }
 }
 
